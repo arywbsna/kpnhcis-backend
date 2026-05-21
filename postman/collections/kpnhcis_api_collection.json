@@ -1,0 +1,829 @@
+{
+  "info": {
+    "_postman_id": "c4f3b2a1-d5e6-7890-f1a2-b3c4d5e6f7a8",
+    "name": "KPN-HCIS Enterprise API",
+    "description": "Comprehensive API test collection for KPN-HCIS Backend.\n\nPhases covered:\n  Phase 1 — Auth (JWT access + refresh token pair)\n  Phase 2 — RBAC (CASL PermissionsGuard + CheckPermissions)\n  Phase 3 — Organization Units (Adjacency List + recursive CTE tree)\n  Phase 4 — Leave Request Lifecycle (XState v5 state machine)\n  Phase 5 — AI Analytics (Qwen/DashScope BI layer)\n\nWorkflow: Run \"Login\" first — the test script auto-populates {{jwtToken}} and {{refreshToken}} for all subsequent requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwtToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🔑 Authentication",
+      "description": "Public login and token management endpoints. Run Login first — the test script saves accessToken → {{jwtToken}} and refreshToken → {{refreshToken}} automatically.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has accessToken — saved to {{jwtToken}}\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"accessToken\");",
+                  "    pm.expect(json.accessToken).to.be.a(\"string\");",
+                  "    pm.environment.set(\"jwtToken\", json.accessToken);",
+                  "    console.log(\"\\u2705 jwtToken saved to environment\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response has refreshToken — saved to {{refreshToken}}\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"refreshToken\");",
+                  "    pm.expect(json.refreshToken).to.be.a(\"string\");",
+                  "    pm.environment.set(\"refreshToken\", json.refreshToken);",
+                  "    console.log(\"\\u2705 refreshToken saved to environment\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response has expiresIn (seconds)\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"expiresIn\");",
+                  "    pm.expect(json.expiresIn).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"staff@corespace.com\",\n  \"password\": \"password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticate with email and password. Returns accessToken (15 min), refreshToken (7 days), and expiresIn (seconds). The test script auto-saves both tokens to the active environment."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{refreshToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "none"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Exchange a valid refresh token for a new access + refresh token pair. Send the refresh token in the Authorization: Bearer header (pre-configured via {{refreshToken}}). Returns 200 OK with a new AuthTokensDto."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "none"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Invalidates the current session by clearing the stored refreshTokenHash on the user record. Returns 204 No Content. Subsequent refresh attempts will fail with 401."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Users Management",
+      "description": "Full CRUD for user accounts. All routes require JWT. Permissions enforced by CASL PermissionsGuard: create/read/update/delete on subject 'User'.",
+      "item": [
+        {
+          "name": "Create User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains id — saved to {{userId}}\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.environment.set(\"userId\", json.id);",
+                  "    console.log(\"\\u2705 userId saved:\", json.id);",
+                  "});",
+                  "",
+                  "pm.test(\"Sensitive fields are not exposed\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"passwordHash\");",
+                  "    pm.expect(json).to.not.have.property(\"refreshTokenHash\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"email\": \"john.doe@kpn.id\",\n  \"password\": \"Password123!\",\n  \"fullName\": \"John Doe\",\n  \"unitId\": \"{{testUnitId}}\",\n  \"roleIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            },
+            "description": "Creates a new user account. employeeId must be unique. roleIds is an array of Role UUIDs. unitId (optional) links the user to an organizational unit. Password is hashed server-side — never returned."
+          },
+          "response": []
+        },
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users?skip=0&take=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "description": "Pagination offset"
+                },
+                {
+                  "key": "take",
+                  "value": "20",
+                  "description": "Page size"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Full-text search on fullName and email",
+                  "disabled": true
+                },
+                {
+                  "key": "unitId",
+                  "value": "{{testUnitId}}",
+                  "description": "Filter by organizational unit UUID",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paginated user list. Returns { data: UserResponseDto[], total: number }. Enable optional query params to filter by unit or full-text search."
+          },
+          "response": []
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "User UUID — auto-populated by Create User test script"
+                }
+              ]
+            },
+            "description": "Returns a single UserResponseDto. Throws 404 if the user does not exist or has been soft-deleted."
+          },
+          "response": []
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"John Doe Updated\",\n  \"unitId\": \"{{testUnitId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "User UUID"
+                }
+              ]
+            },
+            "description": "Partial update — only send fields you want to change. All fields are optional. Changing password requires passing the new password string; it will be re-hashed."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete User (Soft Delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{userId}}",
+                  "description": "User UUID"
+                }
+              ]
+            },
+            "description": "Soft-delete: sets deletedAt timestamp. The user record is retained for audit trail and referential integrity. Returns 204 No Content."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Organization Units",
+      "description": "Organizational unit hierarchy management. Uses PostgreSQL recursive CTEs for tree traversal and ancestor chain resolution. All routes require 'read Unit' permission minimum.",
+      "item": [
+        {
+          "name": "Get Unit Tree",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization/units/tree",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units", "tree"],
+              "query": [
+                {
+                  "key": "includeInactive",
+                  "value": "false",
+                  "description": "Set true to include soft-deactivated units",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns the full org chart as a nested UnitTreeNode tree built via an O(n) in-memory Map from a single DB query. Each node contains: id, name, code, description, parentId, isActive, createdAt, updatedAt, children[]."
+          },
+          "response": []
+        },
+        {
+          "name": "List Units (Flat)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization/units",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units"]
+            },
+            "description": "Flat alphabetical list of all active units. Suitable for dropdowns and search-ahead selects in the frontend."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Unit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains unit id — saved to {{testUnitId}}\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.environment.set(\"testUnitId\", json.id);",
+                  "    console.log(\"\\u2705 testUnitId updated:\", json.id);",
+                  "});",
+                  "",
+                  "pm.test(\"Unit code matches uppercase pattern\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.code).to.match(/^[A-Z0-9_-]+$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Information Technology\",\n  \"code\": \"IT-DIV\",\n  \"description\": \"IT Division — manages all technology infrastructure\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization/units",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units"]
+            },
+            "description": "Create a new unit. code must be uppercase alphanumeric with underscores/hyphens only (regex: ^[A-Z0-9_-]+$). Optionally add parentId (UUID) to nest under an existing unit. Throws 409 if code is already taken."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unit by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization/units/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{testUnitId}}",
+                  "description": "Unit UUID — auto-populated by Create Unit test script"
+                }
+              ]
+            },
+            "description": "Single unit with parent summary (id, name, code) and _count of children and users. Throws 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unit Ancestors (Breadcrumb)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization/units/:id/ancestors",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units", ":id", "ancestors"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{testUnitId}}",
+                  "description": "Unit UUID"
+                }
+              ]
+            },
+            "description": "Returns the full ancestor chain from the org root down to (and including) this unit, ordered shallowest-first. Uses a PostgreSQL recursive CTE. The frontend uses this array to render breadcrumb navigation."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Unit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Information Technology — Revised\",\n  \"description\": \"Updated description after quarterly org review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organization/units/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{testUnitId}}",
+                  "description": "Unit UUID"
+                }
+              ]
+            },
+            "description": "Partial update. All fields are optional. Changing parentId triggers a circular-hierarchy validation — setting a descendant as the new parent returns 400 Bad Request."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Unit (Soft Delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organization/units/:id/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["organization", "units", ":id", "deactivate"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{testUnitId}}",
+                  "description": "Unit UUID"
+                }
+              ]
+            },
+            "description": "Soft-deactivate: sets isActive = false. Does NOT cascade to children — callers must deactivate the subtree explicitly if needed. Returns 200 OK with the updated unit record."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📝 Leave Management (XState Engine)",
+      "description": "Full leave request lifecycle powered by XState v5. State machine: DRAFT → PENDING_APPROVAL → APPROVED_BY_SUPERVISOR → APPROVED / REJECTED / CANCELLED.\n\nWorkflow: Create (DRAFT) → Submit → Approve (supervisor) → Approve (HRD final) or Reject/Cancel at any non-terminal state.",
+      "item": [
+        {
+          "name": "Create Leave Request (DRAFT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Initial status is DRAFT\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.equal(\"DRAFT\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains id — saved to {{leaveRequestId}}\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.environment.set(\"leaveRequestId\", json.id);",
+                  "    console.log(\"\\u2705 leaveRequestId saved:\", json.id);",
+                  "});",
+                  "",
+                  "pm.test(\"XState context is seeded in payload\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"payload\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leaveType\": \"ANNUAL\",\n  \"startDate\": \"2026-06-01\",\n  \"endDate\": \"2026-06-05\",\n  \"totalDays\": 5,\n  \"reason\": \"Annual family vacation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests"]
+            },
+            "description": "Creates a new leave request in DRAFT state for the authenticated user. leaveType enum: ANNUAL | SICK | MATERNITY | PATERNITY | SPECIAL | UNPAID. totalDays min: 0.5, max: 365 (step 0.5). The XState context snapshot is seeded into the payload JSONB column."
+          },
+          "response": []
+        },
+        {
+          "name": "List Leave Requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests?skip=0&take=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests"],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0",
+                  "description": "Pagination offset"
+                },
+                {
+                  "key": "take",
+                  "value": "20",
+                  "description": "Page size"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING_APPROVAL",
+                  "description": "Filter by LeaveRequestStatus enum value",
+                  "disabled": true
+                },
+                {
+                  "key": "leaveType",
+                  "value": "ANNUAL",
+                  "description": "Filter by LeaveType enum value",
+                  "disabled": true
+                },
+                {
+                  "key": "startDateFrom",
+                  "value": "2026-01-01",
+                  "description": "ISO 8601 date — filter startDate >= this value",
+                  "disabled": true
+                },
+                {
+                  "key": "startDateTo",
+                  "value": "2026-12-31",
+                  "description": "ISO 8601 date — filter startDate <= this value",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "{{userId}}",
+                  "description": "Approvers only — query another user's requests",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paginated list with optional filters. Regular employees always see only their own requests (userId is overridden to request.user.id). Approvers/HRD can pass ?userId= to query other employees within their CASL-scoped unit."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Leave Request by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID — auto-populated by Create test script"
+                }
+              ]
+            },
+            "description": "Returns the full leave request with all LeaveApproval audit rows included (ordered by decidedAt ASC). Throws 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Available Transitions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id/transitions",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id", "transitions"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID"
+                }
+              ]
+            },
+            "description": "Returns { status: LeaveRequestStatus, allowedEvents: string[] } for the current XState state node. The Vue 3 / Quasar frontend uses this response to conditionally render action buttons — only reachable transitions are shown. Example: { status: 'PENDING_APPROVAL', allowedEvents: ['APPROVE_BY_SUPERVISOR', 'REJECT', 'CANCEL'] }"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approverIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id", "submit"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID"
+                }
+              ]
+            },
+            "description": "XState event: SUBMIT. Transitions DRAFT → PENDING_APPROVAL. Optional approverIds (UUID array) pre-designates which approvers are authorized. Returns 200 OK with the updated leave request."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Approved — no conflicting schedules found.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id", "approve"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID"
+                }
+              ]
+            },
+            "description": "Smart approval — auto-routes to the correct XState event based on current status:\n  PENDING_APPROVAL       → APPROVE_BY_SUPERVISOR (supervisor step)\n  APPROVED_BY_SUPERVISOR → APPROVE (HRD final step)\n  Any other status       → 409 ConflictException\n\nThe authenticated user's ID is implicitly used as approverId — approvers never pass their own ID, preventing impersonation. Returns 200 OK."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Rejected — critical project milestone during the requested period.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id", "reject"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID"
+                }
+              ]
+            },
+            "description": "XState event: REJECT. Transitions PENDING_APPROVAL or APPROVED_BY_SUPERVISOR → REJECTED. remarks is required (validated by RejectLeaveRequestDto). The reason is persisted in both the LeaveApproval audit row and payload.transitions[]. Returns 200 OK."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Leave Request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "none"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leave-requests/:id/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["leave-requests", ":id", "cancel"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{leaveRequestId}}",
+                  "description": "Leave Request UUID"
+                }
+              ]
+            },
+            "description": "XState event: CANCEL. Valid from DRAFT, PENDING_APPROVAL, and APPROVED_BY_SUPERVISOR. Terminal states (APPROVED, REJECTED, CANCELLED) return 409 ConflictException. No request body required. Returns 200 OK with the cancelled leave request."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🤖 AI Analytics (BI Layer)",
+      "description": "Qwen AI (DashScope / Alibaba Cloud) powered analytics. Aggregates leave and attendance data per organizational unit and returns structured BI reports. Requires QWEN_API_KEY and QWEN_BASE_URL to be set in the server environment.",
+      "item": [
+        {
+          "name": "Divisional Health Analysis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitId\": \"{{testUnitId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ai/analytics/divisional-health",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "analytics", "divisional-health"]
+            },
+            "description": "Aggregates leave data for the specified unit, constructs a structured prompt, and sends it to the Qwen model (configured via QWEN_BASE_URL + QWEN_API_KEY). Returns a BI report with risk indicators, trend analysis, and actionable HR recommendations. Response time depends on QWEN_TIMEOUT_MS (default: 30 000 ms)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
