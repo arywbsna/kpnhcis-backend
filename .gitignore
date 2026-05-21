@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment & Credentials (Super Critical)
+.env
+.env.local
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS & Common IDEs
+.DS_Store
+.vscode/
+.idea/
+
+# Local AI Context & Workspace Cache (From your tree)
+.claude/
+
+# Postman Runtime Cache (Hidden folder only)
+# This ignores app cache, but allows tracking on your 'postman/' collections folder
+.postman/

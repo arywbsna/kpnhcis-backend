@@ -1,5 +1,5 @@
 import { LeaveRequestStatus } from '@prisma/client';
-import { assign, setup } from 'xstate';
+import { and, assign, setup } from 'xstate';
 
 // =============================================================================
 // Types
@@ -181,7 +181,7 @@ export const leaveRequestMachine = setup({
         REJECT: {
           target:  'rejected',
           // Both guards must pass — approver identity AND a written reason
-          guard:   { type: 'and', guards: ['hasApproverId', 'hasRemarks'] },
+          guard:   and(['hasApproverId', 'hasRemarks']),
           actions: 'setApproverCtx',
         },
         CANCEL: {
@@ -202,7 +202,7 @@ export const leaveRequestMachine = setup({
         },
         REJECT: {
           target:  'rejected',
-          guard:   { type: 'and', guards: ['hasApproverId', 'hasRemarks'] },
+          guard:   and(['hasApproverId', 'hasRemarks']),
           actions: 'setApproverCtx',
         },
         // Intentionally allowed: final-authority can still cancel before approval

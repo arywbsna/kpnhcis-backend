@@ -14,15 +14,16 @@ import {
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CheckPolicies } from '../casl/decorators/check-policies.decorator';
-import { PoliciesGuard } from '../casl/guards/policies.guard';
+import { CheckPermissions } from '../casl/decorators/check-permissions.decorator';
+import { PermissionsGuard } from '../casl/guards/permissions.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@CheckPermissions(['read', 'User'])
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -31,7 +32,7 @@ export class UsersController {
    * Requires: create User
    */
   @Post()
-  @CheckPolicies((ability) => ability.can('create', 'User'))
+  @CheckPermissions(['create', 'User'])
   async create(@Body() dto: CreateUserDto): Promise<UserResponseDto> {
     const user = await this.usersService.create(dto);
     return plainToInstance(UserResponseDto, user, {
@@ -44,7 +45,6 @@ export class UsersController {
    * Requires: read User
    */
   @Get()
-  @CheckPolicies((ability) => ability.can('read', 'User'))
   async findAll(
     @Query('skip') skip?: string,
     @Query('take') take?: string,
@@ -71,7 +71,6 @@ export class UsersController {
    * Requires: read User
    */
   @Get(':id')
-  @CheckPolicies((ability) => ability.can('read', 'User'))
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<UserResponseDto> {
@@ -86,7 +85,7 @@ export class UsersController {
    * Requires: update User
    */
   @Patch(':id')
-  @CheckPolicies((ability) => ability.can('update', 'User'))
+  @CheckPermissions(['update', 'User'])
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
@@ -102,7 +101,7 @@ export class UsersController {
    * Requires: delete User — performs a soft delete
    */
   @Delete(':id')
-  @CheckPolicies((ability) => ability.can('delete', 'User'))
+  @CheckPermissions(['delete', 'User'])
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.usersService.remove(id);
