@@ -29,42 +29,59 @@ Standardized, Enterprise-Grade Headless API for Human Capital Information System
 ## Getting Started
 - **Clone the Repository**
 Buka terminal atau command prompt Anda, lalu jalankan perintah berikut:
+```text
 git clone [https://github.com/arywbsna/kpnhcis-backend.git](https://github.com/arywbsna/kpnhcis-backend.git)
 cd kpnhcis-backend
+```
 
 - **Install Dependencies**
 Pastikan Node.js (Minimal v20 LTS) sudah terinstal di sistem Anda. Jalankan perintah ini untuk mengunduh semua package:
+```text
 npm install
+```
 
 - **Environment Configuration (.env)**
 Buat berkas bernama .env di root folder proyek (bisa menyalin dari .env.example). Sesuaikan kredensialnya dengan PostgreSQL dan Redis lokal Anda:
+```text
 DATABASE_URL="postgresql://username_postgres:password_postgres@localhost:5432/nama_database_hcis?schema=public"
 REDIS_URL="redis://localhost:6379"
 JWT_SECRET="buat_string_rahasia_super_panjang_di_sini"
+```
 
 - **Database Migration & Synchronization (Prisma)**
 Perintah ini mirip dengan php artisan migrate di Laravel. Langkah ini akan membaca berkas schema.prisma, melakukan migrasi tabel ke PostgreSQL, dan men-generate TypeScript client.
+```text
 npx prisma migrate dev --name init
+```
 (Opsional) Jika ingin menjalankan data master awal untuk tabel RBAC/User melalui seeder:
+```text
 npx prisma db seed
+```
 
 - **Running the Application in Development Mode**
 Dalam mode ini, server NestJS akan menggunakan fitur Hot Reload. Setiap kali Anda mengubah atau menyimpan kode (.ts), server akan otomatis me-restart sendiri.
+```text
 npm run start:dev
 Server secara default akan berjalan di http://localhost:3000
+```
 
 - **Compiling / Building the Project**
 Karena Node.js tidak bisa mengeksekusi file TypeScript (.ts) secara langsung di production, Anda harus mengompilasi seluruh kode proyek menjadi JavaScript murni (.js). File hasil compile akan masuk ke dalam folder /dist.
+```text
 npm run build
+```
 
 - **Running the Application in Production Mode**
 Setelah proses npm run build selesai dijalankan dengan sukses, gunakan perintah ini di server produksi untuk menjalankan aplikasi JavaScript yang sudah dioptimasi:
+```text
 npm run start:prod
+```
 
 - **Production Process Management (PM2)**
 Pada server produksi asli (seperti Alibaba Cloud ECS), sangat disarankan mengawal proses aplikasi menggunakan Process Manager seperti PM2 agar sistem dapat melakukan auto-restart jika terjadi crash yang tidak terduga:
+```text
 pm2 start dist/main.js --name "kpnhcis-backend"
-
+```
 ---
 
 ## Architecture Overview
@@ -85,3 +102,4 @@ src/
     ├── leave/             # Managed by XState workflow engines
     ├── organization/      # Unit & Department hierarchy tree (Adjacency List)
     └── payroll/           # Heavy arithmetic processing via BullMQ workers
+```
