@@ -198,7 +198,7 @@ export class LeaveRequestController {
     @Body() dto: SubmitLeaveRequestDto,
     @CurrentUser() user: User,
   ): Promise<LeaveRequest> {
-    return this.leaveRequestService.submitRequest(id, user.id, dto.approverIds);
+    return this.leaveRequestService.submitRequest(id, user.id, dto.approvalChain);
   }
 
   /**

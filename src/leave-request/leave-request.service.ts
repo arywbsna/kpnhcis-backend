@@ -50,6 +50,10 @@ export interface RawLeaveRequestRow {
 interface LeaveRequestPayload {
   _v: number;
   _stateValue: string;
+  /** Ordered list of user/position UUIDs that must approve in sequence. */
+  approvalChain: string[];
+  /** Index of the next required approver. Advances on each APPROVE. */
+  currentStepIndex: number;
   lastApproverId?: string;
   lastRemarks?: string;
   transitions: TransitionRecord[];
@@ -77,15 +81,17 @@ export class LeaveRequestService {
     const { payload: extraPayload, ...coreData } = data;
 
     const initialPayload: LeaveRequestPayload = {
-      _v:          1,
-      _stateValue: 'draft',
+      _v:               1,
+      _stateValue:      'draft',
+      approvalChain:    [],   // populated when SUBMIT fires
+      currentStepIndex: 0,
       transitions: [
         {
-          actorId:    data.userId,
-          event:      'CREATE',
-          fromState:  'none',
-          toState:    'draft',
-          timestamp:  new Date().toISOString(),
+          actorId:   data.userId,
+          event:     'CREATE',
+          fromState: 'none',
+          toState:   'draft',
+          timestamp: new Date().toISOString(),
         },
       ],
       ...(extraPayload ?? {}),
@@ -175,21 +181,33 @@ export class LeaveRequestService {
     const currentStateValue = STATUS_TO_STATE[leaveRequest.status];
     const existingPayload = (leaveRequest.payload as Partial<LeaveRequestPayload>) ?? {};
 
+    // Restore the full chain state from the payload so `isAuthorisedApprover`
+    // and the step guards have accurate context on rehydration.
+    const rehydratedContext: LeaveRequestContext = {
+      leaveRequestId:   leaveRequest.id,
+      userId:           leaveRequest.userId,
+      approvalChain:    Array.isArray(existingPayload.approvalChain)
+                          ? existingPayload.approvalChain as string[]
+                          : [],
+      currentStepIndex: typeof existingPayload.currentStepIndex === 'number'
+                          ? existingPayload.currentStepIndex
+                          : 0,
+      lastApproverId:   existingPayload.lastApproverId,
+      lastRemarks:      existingPayload.lastRemarks,
+    };
+
     const actor = createActor(leaveRequestMachine, {
       input: {
-        leaveRequestId:  leaveRequest.id,
-        userId:          leaveRequest.userId,
-        lastApproverId:  existingPayload.lastApproverId,
-        lastRemarks:     existingPayload.lastRemarks,
+        leaveRequestId:   rehydratedContext.leaveRequestId,
+        userId:           rehydratedContext.userId,
+        approvalChain:    rehydratedContext.approvalChain,
+        currentStepIndex: rehydratedContext.currentStepIndex,
+        lastApproverId:   rehydratedContext.lastApproverId,
+        lastRemarks:      rehydratedContext.lastRemarks,
       },
       snapshot: leaveRequestMachine.resolveState({
-        value: currentStateValue,
-        context: {
-          leaveRequestId:  leaveRequest.id,
-          userId:          leaveRequest.userId,
-          lastApproverId:  existingPayload.lastApproverId,
-          lastRemarks:     existingPayload.lastRemarks,
-        } satisfies LeaveRequestContext,
+        value:   currentStateValue,
+        context: rehydratedContext,
       }),
     });
 
@@ -226,6 +244,8 @@ export class LeaveRequestService {
         event:      event.type,
         fromState:  currentStateValue,
         toState:    nextStateValue,
+        // Capture the chain index that was satisfied before advanceStepIndex fires.
+        stepIndex:  'approverId' in event ? rehydratedContext.currentStepIndex : undefined,
         approverId: 'approverId' in event ? event.approverId : undefined,
         remarks:    'remarks'    in event ? event.remarks    : undefined,
         timestamp:  new Date().toISOString(),
@@ -243,11 +263,14 @@ export class LeaveRequestService {
 
       const newPayload: LeaveRequestPayload = {
         ...existingPayload,
-        _v:             1,
-        _stateValue:    nextStateValue,
-        lastApproverId: afterSnapshot.context.lastApproverId,
-        lastRemarks:    afterSnapshot.context.lastRemarks,
-        transitions:    [...existingTransitions, transitionRecord],
+        _v:               1,
+        _stateValue:      nextStateValue,
+        // Persist the updated chain state so the next rehydration is accurate.
+        approvalChain:    afterSnapshot.context.approvalChain,
+        currentStepIndex: afterSnapshot.context.currentStepIndex,
+        lastApproverId:   afterSnapshot.context.lastApproverId,
+        lastRemarks:      afterSnapshot.context.lastRemarks,
+        transitions:      [...existingTransitions, transitionRecord],
       };
 
       const updated = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -289,30 +312,49 @@ export class LeaveRequestService {
   // Typed convenience wrappers — thin delegates over transition()
   // ---------------------------------------------------------------------------
 
-  submit(leaveRequestId: string, userId: string): Promise<LeaveRequest> {
-    return this.transition(leaveRequestId, { type: 'SUBMIT' }, userId);
-  }
-
-  approveBySupervisor(
+  /**
+   * submitRequest — passes the ordered approvalChain inside the SUBMIT event.
+   *
+   * The chain is now part of the XState event, not a post-submit JSONB patch.
+   * The machine's `initApprovalChain` action writes it into context on the
+   * DRAFT → approving transition, and the service persists it in the payload.
+   *
+   * Chain resolution (org hierarchy lookup) must happen before calling this.
+   * The controller or a dedicated ApprovalChainService is responsible for
+   * resolving the ordered list of approver IDs from the employee's unit.
+   */
+  submitRequest(
     leaveRequestId: string,
-    approverId: string,
-    remarks?: string,
+    userId: string,
+    approvalChain: string[],
   ): Promise<LeaveRequest> {
     return this.transition(
       leaveRequestId,
-      { type: 'APPROVE_BY_SUPERVISOR', approverId, remarks },
-      approverId,
+      { type: 'SUBMIT', approvalChain },
+      userId,
     );
   }
 
-  approve(
+  /**
+   * approve — fires the single APPROVE event that drives the token-passing loop.
+   *
+   * positionIds: the actor's currently held position/role UUIDs, resolved by
+   * resolvePositionIds() from user.payload.positionIds. Passed to the machine
+   * guard to support PLT / dual-position scenarios where the chain slot holds
+   * a position UUID rather than a personal user UUID.
+   *
+   * Replaces the old approveBySupervisor + approve split. The machine guard
+   * (`isAuthorisedApprover` + `isLastStep` / `notLastStep`) handles routing.
+   */
+  async approve(
     leaveRequestId: string,
     approverId: string,
     remarks?: string,
   ): Promise<LeaveRequest> {
+    const positionIds = await this.resolvePositionIds(approverId);
     return this.transition(
       leaveRequestId,
-      { type: 'APPROVE', approverId, remarks },
+      { type: 'APPROVE', approverId, positionIds, remarks },
       approverId,
     );
   }
@@ -333,37 +375,36 @@ export class LeaveRequestService {
     return this.transition(leaveRequestId, { type: 'CANCEL' }, userId);
   }
 
-  // ---------------------------------------------------------------------------
-  // submitRequest — submit + optionally record designated approver list
-  //
-  // The XState SUBMIT event transitions DRAFT → PENDING_APPROVAL.
-  // After the transition, any supplied approverIds are patched into the
-  // payload JSONB column so downstream approval steps can validate that
-  // the acting approver is actually authorised for this request.
-  //
-  // Two DB operations when approverIds are provided; single operation otherwise.
-  // ---------------------------------------------------------------------------
-  async submitRequest(
+  /**
+   * approveStep — public facade used by the controller.
+   * Delegates to approve() which handles positionIds resolution internally.
+   * The old status-based routing (PENDING_APPROVAL → approveBySupervisor,
+   * APPROVED_BY_SUPERVISOR → approve) is no longer needed; the machine loop
+   * and `currentStepIndex` replace it.
+   */
+  approveStep(
     leaveRequestId: string,
-    userId: string,
-    approverIds?: string[],
+    approverId: string,
+    remarks?: string,
   ): Promise<LeaveRequest> {
-    const submitted = await this.submit(leaveRequestId, userId);
+    return this.approve(leaveRequestId, approverId, remarks);
+  }
 
-    if (!approverIds || approverIds.length === 0) {
-      return submitted;
-    }
-
-    const currentPayload = (submitted.payload ?? {}) as Record<string, unknown>;
-    return this.prisma.leaveRequest.update({
-      where: { id: leaveRequestId },
-      data: {
-        payload: {
-          ...currentPayload,
-          approverIds,
-        } as unknown as Prisma.InputJsonValue,
-      },
+  // ---------------------------------------------------------------------------
+  // resolvePositionIds — loads the actor's held position/role UUIDs.
+  //
+  // PLT (Pelaksana Tugas) and dual-position users store their additional
+  // position UUIDs in user.payload.positionIds (a string[]).
+  // The machine guard combines these with the actor's personal user UUID
+  // so either form of identity is accepted when matching an approval chain slot.
+  // ---------------------------------------------------------------------------
+  private async resolvePositionIds(userId: string): Promise<string[]> {
+    const user = await this.prisma.user.findUnique({
+      where:  { id: userId },
+      select: { payload: true },
     });
+    const positionIds = (user?.payload as Record<string, unknown>)?.positionIds;
+    return Array.isArray(positionIds) ? (positionIds as string[]) : [];
   }
 
   // ---------------------------------------------------------------------------
@@ -452,9 +493,9 @@ export class LeaveRequestService {
     const { skip = 0, take = 20 } = options ?? {};
 
     // Wrap the approver ID inside the nested structure that @> expects.
-    // {"approverIds": ["<uuid>"]} matches any document where approverIds
+    // {"approvalChain": ["<uuid>"]} matches any document where approvalChain
     // is an array that contains at least this one element.
-    const jsonFilter = JSON.stringify({ approverIds: [approverId] });
+    const jsonFilter = JSON.stringify({ approvalChain: [approverId] });
 
     const statusClause = status
       ? Prisma.sql`AND status = ${status}::"LeaveRequestStatus"`
@@ -515,34 +556,4 @@ export class LeaveRequestService {
     return this.findByPayloadContainment({ _stateValue: stateValue }, options);
   }
 
-  // ---------------------------------------------------------------------------
-  // approveStep — smart routing: resolves the correct approval event from status
-  //
-  // Callers don't need to know which XState event to fire; this method reads
-  // the current status and dispatches to the right transition:
-  //   PENDING_APPROVAL       → APPROVE_BY_SUPERVISOR (supervisor step)
-  //   APPROVED_BY_SUPERVISOR → APPROVE               (final HRD step)
-  //   any other status       → ConflictException
-  // ---------------------------------------------------------------------------
-  async approveStep(
-    leaveRequestId: string,
-    approverId: string,
-    remarks?: string,
-  ): Promise<LeaveRequest> {
-    const { status } = await this.getAvailableTransitions(leaveRequestId);
-
-    switch (status) {
-      case LeaveRequestStatus.PENDING_APPROVAL:
-        return this.approveBySupervisor(leaveRequestId, approverId, remarks);
-
-      case LeaveRequestStatus.APPROVED_BY_SUPERVISOR:
-        return this.approve(leaveRequestId, approverId, remarks);
-
-      default:
-        throw new ConflictException(
-          `Cannot approve a leave request in "${status}" status. ` +
-          `Approval is only valid from PENDING_APPROVAL or APPROVED_BY_SUPERVISOR.`,
-        );
-    }
-  }
 }

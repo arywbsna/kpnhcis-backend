@@ -12,11 +12,12 @@ import { and, assign, setup } from 'xstate';
 export interface TransitionRecord {
   /** UUID of the user who triggered this transition */
   actorId: string;
-  /** XState event type string, e.g. "APPROVE_BY_SUPERVISOR" */
+  /** XState event type string */
   event: string;
   fromState: string;
   toState: string;
-  /** Present only on APPROVE_BY_SUPERVISOR, APPROVE, REJECT */
+  /** Position in the approvalChain that was satisfied (undefined for SUBMIT/CANCEL) */
+  stepIndex?: number;
   approverId?: string;
   remarks?: string;
   timestamp: string; // ISO 8601
@@ -25,7 +26,20 @@ export interface TransitionRecord {
 export interface LeaveRequestContext {
   leaveRequestId: string;
   userId: string;
-  /** ID of the last actor who touched the request via an approver event */
+
+  /**
+   * Ordered list of user UUIDs (or position/role UUIDs for dual-position support)
+   * that must approve in sequence. Set once at SUBMIT; never mutated afterwards.
+   *
+   * Examples:
+   *   Route A: [rmId, hcDivId, groupHcId, jsId]    — 4 steps
+   *   Route B: [hcHeadId, ceoId, jsId]             — 3 steps
+   */
+  approvalChain: string[];
+
+  /** Index of the next required approver in approvalChain. Starts at 0. */
+  currentStepIndex: number;
+
   lastApproverId?: string;
   lastRemarks?: string;
   error?: string;
@@ -35,108 +49,192 @@ export interface LeaveRequestContext {
 export interface LeaveRequestInput {
   leaveRequestId: string;
   userId: string;
+  approvalChain?: string[];
+  currentStepIndex?: number;
   lastApproverId?: string;
   lastRemarks?: string;
 }
 
 export type LeaveRequestEvent =
-  | { type: 'SUBMIT' }
-  | { type: 'APPROVE_BY_SUPERVISOR'; approverId: string; remarks?: string }
-  | { type: 'APPROVE'; approverId: string; remarks?: string }
-  | { type: 'REJECT'; approverId: string; remarks: string }
+  /**
+   * SUBMIT: transitions DRAFT → approving.
+   * The caller is responsible for providing the ordered approval chain.
+   * Chain resolution (unit hierarchy lookup) must happen in the service before
+   * this event is sent — the machine is pure and performs no I/O.
+   */
+  | { type: 'SUBMIT'; approvalChain: string[] }
+  /**
+   * APPROVE: advance one step in the chain.
+   * - Intermediate step: stays in `approving`, increments currentStepIndex.
+   * - Final step: transitions to `approved`.
+   *
+   * positionIds: the acting user's currently held position/role UUIDs.
+   * The guard checks whether any of these IDs matches approvalChain[currentStepIndex],
+   * enabling PLT / dual-position scenarios without duplicating user records.
+   */
+  | { type: 'APPROVE'; approverId: string; positionIds?: string[]; remarks?: string }
+  | { type: 'REJECT';  approverId: string; positionIds?: string[]; remarks: string }
   | { type: 'CANCEL' };
 
 // =============================================================================
-// Bidirectional status ↔ state-value maps — single source of truth
-// Exported so the service never has to re-derive this knowledge.
+// Bidirectional status ↔ state-value maps — single source of truth.
+// The new machine uses a single `approving` state for all in-progress steps.
+// APPROVED_BY_SUPERVISOR is kept for backward-compatibility with existing DB rows.
 // =============================================================================
 
 export const STATE_TO_STATUS: Readonly<Record<string, LeaveRequestStatus>> = {
-  draft:                LeaveRequestStatus.DRAFT,
-  pendingApproval:      LeaveRequestStatus.PENDING_APPROVAL,
-  approvedBySupervisor: LeaveRequestStatus.APPROVED_BY_SUPERVISOR,
-  approved:             LeaveRequestStatus.APPROVED,
-  rejected:             LeaveRequestStatus.REJECTED,
-  cancelled:            LeaveRequestStatus.CANCELLED,
+  draft:     LeaveRequestStatus.DRAFT,
+  approving: LeaveRequestStatus.PENDING_APPROVAL,
+  approved:  LeaveRequestStatus.APPROVED,
+  rejected:  LeaveRequestStatus.REJECTED,
+  cancelled: LeaveRequestStatus.CANCELLED,
 } as const;
 
 export const STATUS_TO_STATE: Readonly<Record<LeaveRequestStatus, string>> = {
-  [LeaveRequestStatus.DRAFT]:                   'draft',
-  [LeaveRequestStatus.PENDING_APPROVAL]:        'pendingApproval',
-  [LeaveRequestStatus.APPROVED_BY_SUPERVISOR]:  'approvedBySupervisor',
-  [LeaveRequestStatus.APPROVED]:                'approved',
-  [LeaveRequestStatus.REJECTED]:                'rejected',
-  [LeaveRequestStatus.CANCELLED]:               'cancelled',
+  [LeaveRequestStatus.DRAFT]:                  'draft',
+  [LeaveRequestStatus.PENDING_APPROVAL]:       'approving',
+  // Legacy rows that reached the old `approvedBySupervisor` state are rehydrated
+  // into `approving`; their currentStepIndex in the payload indicates their position.
+  [LeaveRequestStatus.APPROVED_BY_SUPERVISOR]: 'approving',
+  [LeaveRequestStatus.APPROVED]:               'approved',
+  [LeaveRequestStatus.REJECTED]:               'rejected',
+  [LeaveRequestStatus.CANCELLED]:              'cancelled',
 } as const;
 
-/**
- * States from which no further transitions are possible.
- * The service uses this to exit early rather than rehydrating a dead actor.
- */
 export const TERMINAL_STATUSES = new Set<LeaveRequestStatus>([
   LeaveRequestStatus.APPROVED,
   LeaveRequestStatus.REJECTED,
   LeaveRequestStatus.CANCELLED,
 ]);
 
-/**
- * The event types that are valid from each status.
- * Used by getAvailableTransitions() — derived from the machine topology,
- * kept here so the machine and its consumers share a single definition.
- */
 export const ALLOWED_EVENTS_BY_STATUS: Readonly<
   Record<LeaveRequestStatus, ReadonlyArray<LeaveRequestEvent['type']>>
 > = {
-  [LeaveRequestStatus.DRAFT]:                   ['SUBMIT', 'CANCEL'],
-  [LeaveRequestStatus.PENDING_APPROVAL]:        ['APPROVE_BY_SUPERVISOR', 'REJECT', 'CANCEL'],
-  [LeaveRequestStatus.APPROVED_BY_SUPERVISOR]:  ['APPROVE', 'REJECT', 'CANCEL'],
-  [LeaveRequestStatus.APPROVED]:                [],
-  [LeaveRequestStatus.REJECTED]:                [],
-  [LeaveRequestStatus.CANCELLED]:               [],
+  [LeaveRequestStatus.DRAFT]:                  ['SUBMIT', 'CANCEL'],
+  [LeaveRequestStatus.PENDING_APPROVAL]:       ['APPROVE', 'REJECT', 'CANCEL'],
+  [LeaveRequestStatus.APPROVED_BY_SUPERVISOR]: ['APPROVE', 'REJECT', 'CANCEL'], // legacy
+  [LeaveRequestStatus.APPROVED]:               [],
+  [LeaveRequestStatus.REJECTED]:               [],
+  [LeaveRequestStatus.CANCELLED]:              [],
 } as const;
 
 // =============================================================================
 // Machine
 // Pure: no framework imports, no I/O, no timestamps.
 // All side effects live in LeaveRequestService.
+//
+// State topology (token-passing loop):
+//
+//   draft ──SUBMIT──► approving ──APPROVE (intermediate)──► approving (loop)
+//                          │
+//                          ├──APPROVE (final step)──► approved [final]
+//                          ├──REJECT ───────────────► rejected  [final]
+//                          └──CANCEL ───────────────► cancelled [final]
+//   draft ──CANCEL──► cancelled
+//
+// The single `approving` state replaces the old rigid
+// pendingApproval → approvedBySupervisor two-step graph.
+// Chain length is data, not topology.
 // =============================================================================
 
 export const leaveRequestMachine = setup({
   types: {
-    context:  {} as LeaveRequestContext,
-    events:   {} as LeaveRequestEvent,
-    input:    {} as LeaveRequestInput,
+    context: {} as LeaveRequestContext,
+    events:  {} as LeaveRequestEvent,
+    input:   {} as LeaveRequestInput,
   },
 
   guards: {
-    /** Approver events must carry a non-empty approverId */
-    hasApproverId: ({ event }: { context: LeaveRequestContext; event: LeaveRequestEvent }) =>
-      'approverId' in event && typeof event.approverId === 'string' && event.approverId.length > 0,
+    /** SUBMIT must carry a non-empty ordered chain */
+    hasApprovalChain: (
+      { event }: { context: LeaveRequestContext; event: LeaveRequestEvent },
+    ) =>
+      event.type === 'SUBMIT' &&
+      Array.isArray(event.approvalChain) &&
+      event.approvalChain.length > 0,
 
-    /** Rejections must carry a non-empty reason */
-    hasRemarks: ({ event }: { context: LeaveRequestContext; event: LeaveRequestEvent }) =>
-      'remarks' in event && typeof event.remarks === 'string' && event.remarks.trim().length > 0,
+    /**
+     * Core authorization guard.
+     *
+     * Passes when:
+     *   approvalChain[currentStepIndex] ∈ { event.approverId, ...event.positionIds }
+     *
+     * This covers both cases:
+     *   - Normal user: their UUID matches the chain slot directly.
+     *   - PLT / dual-position: one of their held position UUIDs matches the slot.
+     *     Example: chain slot = "rm-position-uuid", actor holds both their user UUID
+     *     and "rm-position-uuid" in positionIds → guard passes.
+     */
+    isAuthorisedApprover: (
+      { context, event }: { context: LeaveRequestContext; event: LeaveRequestEvent },
+    ) => {
+      if (!('approverId' in event) || typeof event.approverId !== 'string') return false;
+
+      const requiredId = context.approvalChain[context.currentStepIndex];
+      if (!requiredId) return false;
+
+      const actorIdentities = new Set([
+        event.approverId,
+        ...(event.positionIds ?? []),
+      ]);
+
+      return actorIdentities.has(requiredId);
+    },
+
+    /** True when currentStepIndex is at the last slot of the chain */
+    isLastStep: (
+      { context }: { context: LeaveRequestContext; event: LeaveRequestEvent },
+    ) => context.currentStepIndex >= context.approvalChain.length - 1,
+
+    /** True when there is at least one more slot after the current one */
+    notLastStep: (
+      { context }: { context: LeaveRequestContext; event: LeaveRequestEvent },
+    ) => context.currentStepIndex < context.approvalChain.length - 1,
+
+    /** Rejection must carry a non-empty written reason */
+    hasRemarks: (
+      { event }: { context: LeaveRequestContext; event: LeaveRequestEvent },
+    ) =>
+      'remarks' in event &&
+      typeof event.remarks === 'string' &&
+      event.remarks.trim().length > 0,
   },
 
   actions: {
     /**
+     * Called on SUBMIT. Seeds approvalChain + currentStepIndex from the event.
+     * Clears any stale approver fields from a previous lifecycle.
+     */
+    initApprovalChain: assign(
+      ({ event }: { context: LeaveRequestContext; event: LeaveRequestEvent }) => {
+        if (event.type !== 'SUBMIT') return {};
+        return {
+          approvalChain:    event.approvalChain,
+          currentStepIndex: 0,
+          lastApproverId:   undefined as string | undefined,
+          lastRemarks:      undefined as string | undefined,
+        };
+      },
+    ),
+
+    /**
+     * Advances the chain pointer by one.
+     * Called only on intermediate APPROVE transitions (notLastStep).
+     */
+    advanceStepIndex: assign(
+      ({ context }: { context: LeaveRequestContext; event: LeaveRequestEvent }) => ({
+        currentStepIndex: context.currentStepIndex + 1,
+      }),
+    ),
+
+    /**
      * Writes the acting approver's ID and optional remarks into context.
-     * Using the function form of assign so the parameter type is explicit —
-     * the object form relies on XState inference that breaks when the module
-     * is not yet resolved (pre-install).
+     * Called on every successful APPROVE and REJECT.
      */
     setApproverCtx: assign(
       ({ event }: { context: LeaveRequestContext; event: LeaveRequestEvent }) => ({
         lastApproverId: 'approverId' in event ? event.approverId : undefined,
         lastRemarks:    'remarks'    in event ? event.remarks    : undefined,
-      }),
-    ),
-
-    /** Resets approver fields — used when entering non-approver states */
-    clearApproverCtx: assign(
-      (_: { context: LeaveRequestContext; event: LeaveRequestEvent }) => ({
-        lastApproverId: undefined as string | undefined,
-        lastRemarks:    undefined as string | undefined,
       }),
     ),
   },
@@ -146,10 +244,12 @@ export const leaveRequestMachine = setup({
   initial: 'draft',
 
   context: ({ input }: { input: LeaveRequestInput }) => ({
-    leaveRequestId: input.leaveRequestId,
-    userId:         input.userId,
-    lastApproverId: input.lastApproverId,
-    lastRemarks:    input.lastRemarks,
+    leaveRequestId:   input.leaveRequestId,
+    userId:           input.userId,
+    approvalChain:    input.approvalChain    ?? [],
+    currentStepIndex: input.currentStepIndex ?? 0,
+    lastApproverId:   input.lastApproverId,
+    lastRemarks:      input.lastRemarks,
   }),
 
   states: {
@@ -159,8 +259,9 @@ export const leaveRequestMachine = setup({
     draft: {
       on: {
         SUBMIT: {
-          target:  'pendingApproval',
-          actions: 'clearApproverCtx',
+          target:  'approving',
+          guard:   'hasApprovalChain',
+          actions: 'initApprovalChain',
         },
         CANCEL: {
           target: 'cancelled',
@@ -169,43 +270,36 @@ export const leaveRequestMachine = setup({
     },
 
     // -------------------------------------------------------------------------
-    // PENDING_APPROVAL — submitted, awaiting supervisor review
+    // APPROVING — dynamic token-passing loop.
+    //
+    // XState evaluates the APPROVE array entries in order.
+    // Both branches require `isAuthorisedApprover`, so an unauthorized actor
+    // fails both — snapshot.can(event) returns false, and the service throws 400.
+    //
+    // The two branches are mutually exclusive (notLastStep XOR isLastStep),
+    // so evaluation order does not affect correctness.
     // -------------------------------------------------------------------------
-    pendingApproval: {
+    approving: {
       on: {
-        APPROVE_BY_SUPERVISOR: {
-          target:  'approvedBySupervisor',
-          guard:   'hasApproverId',
-          actions: 'setApproverCtx',
-        },
+        APPROVE: [
+          {
+            // Intermediate step: advance pointer and stay in `approving`.
+            guard:   and(['isAuthorisedApprover', 'notLastStep']),
+            target:  'approving',
+            actions: ['setApproverCtx', 'advanceStepIndex'],
+          },
+          {
+            // Final step: chain is exhausted — transition to terminal state.
+            guard:   and(['isAuthorisedApprover', 'isLastStep']),
+            target:  'approved',
+            actions: 'setApproverCtx',
+          },
+        ],
         REJECT: {
           target:  'rejected',
-          // Both guards must pass — approver identity AND a written reason
-          guard:   and(['hasApproverId', 'hasRemarks']),
+          guard:   and(['isAuthorisedApprover', 'hasRemarks']),
           actions: 'setApproverCtx',
         },
-        CANCEL: {
-          target: 'cancelled',
-        },
-      },
-    },
-
-    // -------------------------------------------------------------------------
-    // APPROVED_BY_SUPERVISOR — supervisor approved; awaiting final authority
-    // -------------------------------------------------------------------------
-    approvedBySupervisor: {
-      on: {
-        APPROVE: {
-          target:  'approved',
-          guard:   'hasApproverId',
-          actions: 'setApproverCtx',
-        },
-        REJECT: {
-          target:  'rejected',
-          guard:   and(['hasApproverId', 'hasRemarks']),
-          actions: 'setApproverCtx',
-        },
-        // Intentionally allowed: final-authority can still cancel before approval
         CANCEL: {
           target: 'cancelled',
         },
