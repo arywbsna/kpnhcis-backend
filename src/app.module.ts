@@ -14,6 +14,9 @@ import { UsersModule } from './users/users.module';
 import { UnitsModule } from './units/units.module';
 import { LeaveRequestModule } from './leave-request/leave-request.module';
 import { AiModule } from './modules/ai/ai.module';
+import { EmployeeProfileModule } from './modules/employee/employee-profile.module';
+import { LocalizationModule } from './modules/localization/localization.module';
+import { ProfilesModule } from './profiles/profiles.module';
 
 @Module({
   imports: [
@@ -95,6 +98,9 @@ import { AiModule } from './modules/ai/ai.module';
     UnitsModule,
     LeaveRequestModule,
     AiModule,
+    EmployeeProfileModule,
+    LocalizationModule,
+    ProfilesModule,
   ],
 })
 export class AppModule {}

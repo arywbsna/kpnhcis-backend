@@ -18,7 +18,8 @@ export type Action =
   | 'approve'     // LeaveRequest: supervisor approval or final approval
   | 'reject'      // LeaveRequest: any active state → REJECTED
   | 'cancel'      // LeaveRequest: DRAFT | PENDING_APPROVAL | APPROVED_BY_SUPERVISOR → CANCELLED
-  | 'analyze';    // BusinessIntelligence: AI-driven divisional health analytics (HR Director +)
+  | 'analyze'     // BusinessIntelligence: AI-driven divisional health analytics (HR Director +)
+  | 'sync';       // User: ingest profile data from external HRIS (Darwinbox). Integration service accounts only.
 
 // =============================================================================
 // Subjects

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c4f3b2a1-d5e6-7890-f1a2-b3c4d5e6f7a8",
     "name": "KPN-HCIS Enterprise API",
-    "description": "Comprehensive API test collection for KPN-HCIS Backend.\n\nPhases covered:\n  Phase 1 — Auth (JWT access + refresh token pair)\n  Phase 2 — RBAC (CASL PermissionsGuard + CheckPermissions)\n  Phase 3 — Organization Units (Adjacency List + recursive CTE tree)\n  Phase 4 — Leave Request Lifecycle (XState v5 state machine)\n  Phase 5 — AI Analytics (Qwen/DashScope BI layer)\n\nWorkflow: Run \"Login\" first — the test script auto-populates {{jwtToken}} and {{refreshToken}} for all subsequent requests.",
+    "description": "Comprehensive API test collection for KPN-HCIS Backend.\n\nPhases covered:\n  Phase 1 \u2014 Auth (JWT access + refresh token pair)\n  Phase 2 \u2014 RBAC (CASL PermissionsGuard + CheckPermissions)\n  Phase 3 \u2014 Organization Units (Adjacency List + recursive CTE tree)\n  Phase 4 \u2014 Leave Request Lifecycle (XState v5 state machine)\n  Phase 5 \u2014 AI Analytics (Qwen/DashScope BI layer)\n\nWorkflow: Run \"Login\" first \u2014 the test script auto-populates {{jwtToken}} and {{refreshToken}} for all subsequent requests.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -17,8 +17,8 @@
   },
   "item": [
     {
-      "name": "🔑 Authentication",
-      "description": "Public login and token management endpoints. Run Login first — the test script saves accessToken → {{jwtToken}} and refreshToken → {{refreshToken}} automatically.",
+      "name": "\ud83d\udd11 Authentication",
+      "description": "Public login and token management endpoints. Run Login first \u2014 the test script saves accessToken \u2192 {{jwtToken}} and refreshToken \u2192 {{refreshToken}} automatically.",
       "item": [
         {
           "name": "Login",
@@ -32,7 +32,7 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test(\"Response has accessToken — saved to {{jwtToken}}\", function () {",
+                  "pm.test(\"Response has accessToken \u2014 saved to {{jwtToken}}\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json).to.have.property(\"accessToken\");",
                   "    pm.expect(json.accessToken).to.be.a(\"string\");",
@@ -40,7 +40,7 @@
                   "    console.log(\"\\u2705 jwtToken saved to environment\");",
                   "});",
                   "",
-                  "pm.test(\"Response has refreshToken — saved to {{refreshToken}}\", function () {",
+                  "pm.test(\"Response has refreshToken \u2014 saved to {{refreshToken}}\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json).to.have.property(\"refreshToken\");",
                   "    pm.expect(json.refreshToken).to.be.a(\"string\");",
@@ -79,8 +79,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
             },
             "description": "Authenticate with email and password. Returns accessToken (15 min), refreshToken (7 days), and expiresIn (seconds). The test script auto-saves both tokens to the active environment."
           },
@@ -106,8 +111,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/auth/refresh",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "refresh"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
             },
             "description": "Exchange a valid refresh token for a new access + refresh token pair. Send the refresh token in the Authorization: Bearer header (pre-configured via {{refreshToken}}). Returns 200 OK with a new AuthTokensDto."
           },
@@ -123,8 +133,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/auth/logout",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "logout"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
             },
             "description": "Invalidates the current session by clearing the stored refreshTokenHash on the user record. Returns 204 No Content. Subsequent refresh attempts will fail with 401."
           },
@@ -133,7 +148,7 @@
       ]
     },
     {
-      "name": "👤 Users Management",
+      "name": "\ud83d\udc64 Users Management",
       "description": "Full CRUD for user accounts. All routes require JWT. Permissions enforced by CASL PermissionsGuard: create/read/update/delete on subject 'User'.",
       "item": [
         {
@@ -148,7 +163,7 @@
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "pm.test(\"Response contains id — saved to {{userId}}\", function () {",
+                  "pm.test(\"Response contains id \u2014 saved to {{userId}}\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json).to.have.property(\"id\");",
                   "    pm.environment.set(\"userId\", json.id);",
@@ -183,10 +198,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/users",
-              "host": ["{{baseUrl}}"],
-              "path": ["users"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
             },
-            "description": "Creates a new user account. employeeId must be unique. roleIds is an array of Role UUIDs. unitId (optional) links the user to an organizational unit. Password is hashed server-side — never returned."
+            "description": "Creates a new user account. employeeId must be unique. roleIds is an array of Role UUIDs. unitId (optional) links the user to an organizational unit. Password is hashed server-side \u2014 never returned."
           },
           "response": []
         },
@@ -197,8 +216,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/users?skip=0&take=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["users"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ],
               "query": [
                 {
                   "key": "skip",
@@ -235,13 +258,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/users/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["users", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
                   "value": "{{userId}}",
-                  "description": "User UUID — auto-populated by Create User test script"
+                  "description": "User UUID \u2014 auto-populated by Create User test script"
                 }
               ]
             },
@@ -270,8 +298,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/users/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["users", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -280,7 +313,7 @@
                 }
               ]
             },
-            "description": "Partial update — only send fields you want to change. All fields are optional. Changing password requires passing the new password string; it will be re-hashed."
+            "description": "Partial update \u2014 only send fields you want to change. All fields are optional. Changing password requires passing the new password string; it will be re-hashed."
           },
           "response": []
         },
@@ -291,8 +324,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/users/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["users", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -308,7 +346,7 @@
       ]
     },
     {
-      "name": "🏢 Organization Units",
+      "name": "\ud83c\udfe2 Organization Units",
       "description": "Organizational unit hierarchy management. Uses PostgreSQL recursive CTEs for tree traversal and ancestor chain resolution. All routes require 'read Unit' permission minimum.",
       "item": [
         {
@@ -318,8 +356,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/organization/units/tree",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units", "tree"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units",
+                "tree"
+              ],
               "query": [
                 {
                   "key": "includeInactive",
@@ -340,8 +384,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/organization/units",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units"
+              ]
             },
             "description": "Flat alphabetical list of all active units. Suitable for dropdowns and search-ahead selects in the frontend."
           },
@@ -359,7 +408,7 @@
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "pm.test(\"Response contains unit id — saved to {{testUnitId}}\", function () {",
+                  "pm.test(\"Response contains unit id \u2014 saved to {{testUnitId}}\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json).to.have.property(\"id\");",
                   "    pm.environment.set(\"testUnitId\", json.id);",
@@ -384,7 +433,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Information Technology\",\n  \"code\": \"IT-DIV\",\n  \"description\": \"IT Division — manages all technology infrastructure\",\n  \"isActive\": true\n}",
+              "raw": "{\n  \"name\": \"Information Technology\",\n  \"code\": \"IT-DIV\",\n  \"description\": \"IT Division \u2014 manages all technology infrastructure\",\n  \"isActive\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -393,8 +442,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/organization/units",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units"
+              ]
             },
             "description": "Create a new unit. code must be uppercase alphanumeric with underscores/hyphens only (regex: ^[A-Z0-9_-]+$). Optionally add parentId (UUID) to nest under an existing unit. Throws 409 if code is already taken."
           },
@@ -407,13 +461,19 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/organization/units/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
                   "value": "{{testUnitId}}",
-                  "description": "Unit UUID — auto-populated by Create Unit test script"
+                  "description": "Unit UUID \u2014 auto-populated by Create Unit test script"
                 }
               ]
             },
@@ -428,8 +488,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/organization/units/:id/ancestors",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units", ":id", "ancestors"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units",
+                ":id",
+                "ancestors"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -454,7 +521,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Information Technology — Revised\",\n  \"description\": \"Updated description after quarterly org review\"\n}",
+              "raw": "{\n  \"name\": \"Information Technology \u2014 Revised\",\n  \"description\": \"Updated description after quarterly org review\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -463,8 +530,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/organization/units/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -473,7 +546,7 @@
                 }
               ]
             },
-            "description": "Partial update. All fields are optional. Changing parentId triggers a circular-hierarchy validation — setting a descendant as the new parent returns 400 Bad Request."
+            "description": "Partial update. All fields are optional. Changing parentId triggers a circular-hierarchy validation \u2014 setting a descendant as the new parent returns 400 Bad Request."
           },
           "response": []
         },
@@ -484,8 +557,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/organization/units/:id/deactivate",
-              "host": ["{{baseUrl}}"],
-              "path": ["organization", "units", ":id", "deactivate"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organization",
+                "units",
+                ":id",
+                "deactivate"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -494,15 +574,15 @@
                 }
               ]
             },
-            "description": "Soft-deactivate: sets isActive = false. Does NOT cascade to children — callers must deactivate the subtree explicitly if needed. Returns 200 OK with the updated unit record."
+            "description": "Soft-deactivate: sets isActive = false. Does NOT cascade to children \u2014 callers must deactivate the subtree explicitly if needed. Returns 200 OK with the updated unit record."
           },
           "response": []
         }
       ]
     },
     {
-      "name": "📝 Leave Management (XState Engine)",
-      "description": "Full leave request lifecycle powered by XState v5. State machine: DRAFT → PENDING_APPROVAL → APPROVED_BY_SUPERVISOR → APPROVED / REJECTED / CANCELLED.\n\nWorkflow: Create (DRAFT) → Submit → Approve (supervisor) → Approve (HRD final) or Reject/Cancel at any non-terminal state.",
+      "name": "\ud83d\udcdd Leave Management (XState Engine)",
+      "description": "Full leave request lifecycle powered by XState v5. State machine: DRAFT \u2192 PENDING_APPROVAL \u2192 APPROVED_BY_SUPERVISOR \u2192 APPROVED / REJECTED / CANCELLED.\n\nWorkflow: Create (DRAFT) \u2192 Submit \u2192 Approve (supervisor) \u2192 Approve (HRD final) or Reject/Cancel at any non-terminal state.",
       "item": [
         {
           "name": "Create Leave Request (DRAFT)",
@@ -521,7 +601,7 @@
                   "    pm.expect(json.status).to.equal(\"DRAFT\");",
                   "});",
                   "",
-                  "pm.test(\"Response contains id — saved to {{leaveRequestId}}\", function () {",
+                  "pm.test(\"Response contains id \u2014 saved to {{leaveRequestId}}\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json).to.have.property(\"id\");",
                   "    pm.environment.set(\"leaveRequestId\", json.id);",
@@ -555,8 +635,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/leave-requests",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests"
+              ]
             },
             "description": "Creates a new leave request in DRAFT state for the authenticated user. leaveType enum: ANNUAL | SICK | MATERNITY | PATERNITY | SPECIAL | UNPAID. totalDays min: 0.5, max: 365 (step 0.5). The XState context snapshot is seeded into the payload JSONB column."
           },
@@ -569,8 +653,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/leave-requests?skip=0&take=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests"
+              ],
               "query": [
                 {
                   "key": "skip",
@@ -597,19 +685,19 @@
                 {
                   "key": "startDateFrom",
                   "value": "2026-01-01",
-                  "description": "ISO 8601 date — filter startDate >= this value",
+                  "description": "ISO 8601 date \u2014 filter startDate >= this value",
                   "disabled": true
                 },
                 {
                   "key": "startDateTo",
                   "value": "2026-12-31",
-                  "description": "ISO 8601 date — filter startDate <= this value",
+                  "description": "ISO 8601 date \u2014 filter startDate <= this value",
                   "disabled": true
                 },
                 {
                   "key": "userId",
                   "value": "{{userId}}",
-                  "description": "Approvers only — query another user's requests",
+                  "description": "Approvers only \u2014 query another user's requests",
                   "disabled": true
                 }
               ]
@@ -625,13 +713,18 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id"
+              ],
               "variable": [
                 {
                   "key": "id",
                   "value": "{{leaveRequestId}}",
-                  "description": "Leave Request UUID — auto-populated by Create test script"
+                  "description": "Leave Request UUID \u2014 auto-populated by Create test script"
                 }
               ]
             },
@@ -646,8 +739,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id/transitions",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id", "transitions"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id",
+                "transitions"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -656,7 +755,7 @@
                 }
               ]
             },
-            "description": "Returns { status: LeaveRequestStatus, allowedEvents: string[] } for the current XState state node. The Vue 3 / Quasar frontend uses this response to conditionally render action buttons — only reachable transitions are shown. Example: { status: 'PENDING_APPROVAL', allowedEvents: ['APPROVE_BY_SUPERVISOR', 'REJECT', 'CANCEL'] }"
+            "description": "Returns { status: LeaveRequestStatus, allowedEvents: string[] } for the current XState state node. The Vue 3 / Quasar frontend uses this response to conditionally render action buttons \u2014 only reachable transitions are shown. Example: { status: 'PENDING_APPROVAL', allowedEvents: ['APPROVE_BY_SUPERVISOR', 'REJECT', 'CANCEL'] }"
           },
           "response": []
         },
@@ -681,8 +780,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id/submit",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id", "submit"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id",
+                "submit"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -691,7 +796,7 @@
                 }
               ]
             },
-            "description": "XState event: SUBMIT. Transitions DRAFT → PENDING_APPROVAL. Optional approverIds (UUID array) pre-designates which approvers are authorized. Returns 200 OK with the updated leave request."
+            "description": "XState event: SUBMIT. Transitions DRAFT \u2192 PENDING_APPROVAL. Optional approverIds (UUID array) pre-designates which approvers are authorized. Returns 200 OK with the updated leave request."
           },
           "response": []
         },
@@ -707,7 +812,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"remarks\": \"Approved — no conflicting schedules found.\"\n}",
+              "raw": "{\n  \"remarks\": \"Approved \u2014 no conflicting schedules found.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -716,8 +821,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id/approve",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id", "approve"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id",
+                "approve"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -726,7 +837,7 @@
                 }
               ]
             },
-            "description": "Smart approval — auto-routes to the correct XState event based on current status:\n  PENDING_APPROVAL       → APPROVE_BY_SUPERVISOR (supervisor step)\n  APPROVED_BY_SUPERVISOR → APPROVE (HRD final step)\n  Any other status       → 409 ConflictException\n\nThe authenticated user's ID is implicitly used as approverId — approvers never pass their own ID, preventing impersonation. Returns 200 OK."
+            "description": "Smart approval \u2014 auto-routes to the correct XState event based on current status:\n  PENDING_APPROVAL       \u2192 APPROVE_BY_SUPERVISOR (supervisor step)\n  APPROVED_BY_SUPERVISOR \u2192 APPROVE (HRD final step)\n  Any other status       \u2192 409 ConflictException\n\nThe authenticated user's ID is implicitly used as approverId \u2014 approvers never pass their own ID, preventing impersonation. Returns 200 OK."
           },
           "response": []
         },
@@ -742,7 +853,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"remarks\": \"Rejected — critical project milestone during the requested period.\"\n}",
+              "raw": "{\n  \"remarks\": \"Rejected \u2014 critical project milestone during the requested period.\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -751,8 +862,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id/reject",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id", "reject"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id",
+                "reject"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -761,7 +878,7 @@
                 }
               ]
             },
-            "description": "XState event: REJECT. Transitions PENDING_APPROVAL or APPROVED_BY_SUPERVISOR → REJECTED. remarks is required (validated by RejectLeaveRequestDto). The reason is persisted in both the LeaveApproval audit row and payload.transitions[]. Returns 200 OK."
+            "description": "XState event: REJECT. Transitions PENDING_APPROVAL or APPROVED_BY_SUPERVISOR \u2192 REJECTED. remarks is required (validated by RejectLeaveRequestDto). The reason is persisted in both the LeaveApproval audit row and payload.transitions[]. Returns 200 OK."
           },
           "response": []
         },
@@ -775,8 +892,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/leave-requests/:id/cancel",
-              "host": ["{{baseUrl}}"],
-              "path": ["leave-requests", ":id", "cancel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leave-requests",
+                ":id",
+                "cancel"
+              ],
               "variable": [
                 {
                   "key": "id",
@@ -792,7 +915,7 @@
       ]
     },
     {
-      "name": "🤖 AI Analytics (BI Layer)",
+      "name": "\ud83e\udd16 AI Analytics (BI Layer)",
       "description": "Qwen AI (DashScope / Alibaba Cloud) powered analytics. Aggregates leave and attendance data per organizational unit and returns structured BI reports. Requires QWEN_API_KEY and QWEN_BASE_URL to be set in the server environment.",
       "item": [
         {
@@ -816,10 +939,263 @@
             },
             "url": {
               "raw": "{{baseUrl}}/ai/analytics/divisional-health",
-              "host": ["{{baseUrl}}"],
-              "path": ["ai", "analytics", "divisional-health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "analytics",
+                "divisional-health"
+              ]
             },
             "description": "Aggregates leave data for the specified unit, constructs a structured prompt, and sends it to the Qwen model (configured via QWEN_BASE_URL + QWEN_API_KEY). Returns a BI report with risk indicators, trend analysis, and actionable HR recommendations. Response time depends on QWEN_TIMEOUT_MS (default: 30 000 ms)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "\ud83d\udc64 Employee Profiles (Darwinbox Sync)",
+      "item": [
+        {
+          "name": "Sync Employee Profile (Darwinbox \u2192 KPNHCIS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "// POST /profiles/sync \u2014 Darwinbox employee upsert",
+                  "// Idempotent: calling with the same employee_no is safe.",
+                  "// HTTP 200 (not 201) for both create and update.",
+                  "// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "",
+                  "pm.test(\"Status is 200 OK (idempotent upsert)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is under 2000 ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is valid JSON\", function () {",
+                  "    pm.response.to.be.json;",
+                  "});",
+                  "",
+                  "pm.test(\"User has required identity fields\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"id\").that.is.a(\"string\");",
+                  "    pm.expect(json).to.have.property(\"employeeId\").that.is.a(\"string\");",
+                  "    pm.expect(json).to.have.property(\"email\").that.is.a(\"string\");",
+                  "    pm.expect(json).to.have.property(\"fullName\").that.is.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"User status is a valid UserStatus enum value\", function () {",
+                  "    var json = pm.response.json();",
+                  "    var validStatuses = [\"ACTIVE\", \"INACTIVE\", \"SUSPENDED\"];",
+                  "    pm.expect(validStatuses).to.include(json.status);",
+                  "});",
+                  "",
+                  "pm.test(\"Payload contains versioned Darwinbox sync block\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"payload\");",
+                  "    pm.expect(json.payload).to.have.property(\"_v\", 1);",
+                  "    pm.expect(json.payload).to.have.property(\"darwinbox\");",
+                  "    pm.expect(json.payload.darwinbox).to.have.property(\"synced_at\");",
+                  "    // Verify synced_at is a valid ISO 8601 timestamp",
+                  "    var syncedAt = new Date(json.payload.darwinbox.synced_at);",
+                  "    pm.expect(syncedAt.toString()).to.not.equal(\"Invalid Date\");",
+                  "});",
+                  "",
+                  "pm.test(\"Payload personal block is present\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.payload).to.have.property(\"personal\");",
+                  "});",
+                  "",
+                  "pm.test(\"Payload employment block has department_id\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.payload).to.have.property(\"employment\");",
+                  "    pm.expect(json.payload.employment).to.have.property(\"department_id\");",
+                  "});",
+                  "",
+                  "pm.test(\"Payload manager_snapshot block is present\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.payload).to.have.property(\"manager_snapshot\");",
+                  "});",
+                  "",
+                  "pm.test(\"passwordHash is NOT exposed in the response\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.not.have.property(\"passwordHash\");",
+                  "    pm.expect(json).to.not.have.property(\"password_hash\");",
+                  "    pm.expect(json).to.not.have.property(\"refreshTokenHash\");",
+                  "});",
+                  "",
+                  "pm.test(\"employeeId matches the sent employee_no \u2014 save to env\", function () {",
+                  "    var json = pm.response.json();",
+                  "    var sentEmployeeNo = JSON.parse(pm.request.body.raw).coreDetails.employee_no;",
+                  "    pm.expect(json.employeeId).to.equal(sentEmployeeNo);",
+                  "    pm.environment.set(\"syncedUserId\", json.id);",
+                  "    pm.environment.set(\"syncedEmployeeNo\", json.employeeId);",
+                  "    pm.environment.set(\"syncedDepartmentId\",",
+                  "        json.payload.employment.department_id || \"\");",
+                  "    console.log(\"\u2705 syncedUserId saved:\", json.id);",
+                  "    console.log(\"\u2705 syncedEmployeeNo saved:\", json.employeeId);",
+                  "    console.log(\"\u2705 syncedDepartmentId saved:\", json.payload.employment.department_id);",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Idempotency marker \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "// Run this request twice with the same body \u2014 both should return 200.",
+                  "// Check the Console tab: synced_at timestamps will differ,",
+                  "// confirming the upsert ran (not a cache hit).",
+                  "var json = pm.response.json();",
+                  "console.log(\"\ud83d\udd04 Last synced_at:\", json.payload && json.payload.darwinbox && json.payload.darwinbox.synced_at);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coreDetails\": {\n    \"employee_no\": \"EMP-00123\",\n    \"employee_id\": \"DWB-00123\",\n    \"email\": \"budi.santoso@kpn.co.id\",\n    \"first_name\": \"Budi\",\n    \"middle_name\": \"\",\n    \"last_name\": \"Santoso\",\n    \"mobile\": \"+6281234567890\",\n    \"gender\": \"Male\",\n    \"date_of_birth\": \"1988-04-22\",\n    \"date_of_joining\": \"2019-07-01\",\n    \"designation\": \"Senior Software Engineer\",\n    \"department\": \"Information Technology\",\n    \"department_id\": \"DEPT_IT_001\",\n    \"employment_type\": \"PERMANENT\",\n    \"reporting_manager_employee_id\": \"EMP-00010\",\n    \"reporting_manager_name\": \"Andi Prasetyo\",\n    \"status\": \"active\",\n    \"company_id\": \"KPN-001\",\n    \"branch\": \"Jakarta HQ\",\n    \"branch_id\": \"BRANCH_JKT_001\"\n  },\n  \"profileDetails\": {\n    \"personal_details\": {\n      \"religion\": \"Islam\",\n      \"blood_group\": \"O+\",\n      \"marital_status\": \"Married\",\n      \"nationality\": \"Indonesian\",\n      \"place_of_birth\": \"Bandung\",\n      \"nik\": \"3273011234560001\",\n      \"npwp\": \"12.345.678.9-001.000\"\n    },\n    \"addresses\": [\n      {\n        \"type\": \"PERMANENT\",\n        \"street\": \"Jl. Merdeka No. 12\",\n        \"city\": \"Jakarta Selatan\",\n        \"province\": \"DKI Jakarta\",\n        \"postal_code\": \"12190\",\n        \"country\": \"Indonesia\"\n      }\n    ],\n    \"education_history\": [\n      {\n        \"level\": \"S1\",\n        \"institution\": \"Universitas Indonesia\",\n        \"major\": \"Ilmu Komputer\",\n        \"year_from\": 2006,\n        \"year_to\": 2010,\n        \"gpa\": \"3.72\"\n      }\n    ],\n    \"emergency_contacts\": [\n      {\n        \"name\": \"Siti Rahayu\",\n        \"relationship\": \"Spouse\",\n        \"phone\": \"+6281298765432\"\n      }\n    ],\n    \"family_details\": []\n  },\n  \"employmentDetails\": {\n    \"current_position\": {\n      \"designation\": \"Senior Software Engineer\",\n      \"designation_id\": \"DESIG_SSE\",\n      \"department\": \"Information Technology\",\n      \"department_id\": \"DEPT_IT_001\",\n      \"employment_type\": \"PERMANENT\",\n      \"date_of_joining\": \"2019-07-01\",\n      \"probation_end_date\": null,\n      \"contract_end_date\": null,\n      \"location\": \"Jakarta HQ\",\n      \"cost_center\": \"CC_IT_001\"\n    },\n    \"reporting_manager\": {\n      \"employee_no\": \"EMP-00010\",\n      \"name\": \"Andi Prasetyo\",\n      \"designation\": \"Head of IT\",\n      \"email\": \"andi.prasetyo@kpn.co.id\"\n    },\n    \"work_experience\": [\n      {\n        \"company_name\": \"PT Teknologi Nusantara\",\n        \"designation\": \"Junior Developer\",\n        \"start_date\": \"2010-08-01\",\n        \"end_date\": \"2019-06-30\",\n        \"reason_for_leaving\": \"Career growth\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles",
+                "sync"
+              ]
+            },
+            "description": "Upserts one Darwinbox employee into the KPNHCIS users table.\n\nHTTP 200 for both create (first sync) and update (re-sync) \u2014 upsert semantics.\n\nRequired: coreDetails.employee_no (upsert key) + coreDetails.email.\nOptional: profileDetails (biographical/address), employmentDetails (position/history).\n\nPermissions: sync:User \u2014 integration service account only.\n\nSide effects:\n  \u2022 unitId resolved via Unit.code = department_id (null if unit not created yet)\n  \u2022 managerId resolved via User.employeeId = reporting_manager_employee_id (null if manager not yet synced)\n  \u2022 New users get a temp unusable passwordHash; must use password-reset flow to log in\n  \u2022 payload.positionIds (PLT dual-position UUIDs) are preserved \u2014 never overwritten by sync"
+          },
+          "response": []
+        },
+        {
+          "name": "List Users by Department (GIN Query)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "// GET /profiles/by-department/:departmentId",
+                  "// GIN @> containment query on payload.employment.department_id.",
+                  "// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "",
+                  "pm.test(\"Status is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is under 500 ms (GIN index should be fast)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(500);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has pagination envelope { data, total }\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"data\").that.is.an(\"array\");",
+                  "    pm.expect(json).to.have.property(\"total\").that.is.a(\"number\");",
+                  "    pm.expect(json.total).to.be.at.least(0);",
+                  "});",
+                  "",
+                  "pm.test(\"All returned users belong to the queried department_id\", function () {",
+                  "    var json = pm.response.json();",
+                  "    var deptId = pm.request.url.path.slice(-1)[0];",
+                  "    json.data.forEach(function (user) {",
+                  "        pm.expect(user.payload).to.have.property(\"employment\");",
+                  "        pm.expect(user.payload.employment.department_id).to.equal(deptId);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"data count does not exceed take (default 20)\", function () {",
+                  "    var json = pm.response.json();",
+                  "    var take = parseInt(pm.request.url.query.get(\"take\") || \"20\");",
+                  "    pm.expect(json.data.length).to.be.at.most(take);",
+                  "});",
+                  "",
+                  "pm.test(\"Each user record has required fields\", function () {",
+                  "    var json = pm.response.json();",
+                  "    json.data.forEach(function (user) {",
+                  "        pm.expect(user).to.have.property(\"id\");",
+                  "        pm.expect(user).to.have.property(\"employeeId\");",
+                  "        pm.expect(user).to.have.property(\"email\");",
+                  "        pm.expect(user).to.have.property(\"fullName\");",
+                  "        pm.expect(user).to.not.have.property(\"passwordHash\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"total >= data.length (pagination invariant)\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.total).to.be.at.least(json.data.length);",
+                  "});",
+                  "",
+                  "// Log department count for debugging",
+                  "var json = pm.response.json();",
+                  "console.log(\"\ud83d\udcca Department query returned\", json.total, \"total users,\", json.data.length, \"on this page\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/profiles/by-department/{{syncedDepartmentId}}?skip=0&take=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profiles",
+                "by-department",
+                "{{syncedDepartmentId}}"
+              ],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "0"
+                },
+                {
+                  "key": "take",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lists employees belonging to a Darwinbox department_id.\n\nUses GIN @> containment query on payload.employment.department_id \u2014 fast even at high user counts.\n\n{{syncedDepartmentId}} is set automatically by the 'Sync Employee Profile' Tests script.\n\nPermissions: read:User.\n\nQuery params:\n  skip \u2014 offset (default 0)\n  take \u2014 page size (default 20)"
           },
           "response": []
         }

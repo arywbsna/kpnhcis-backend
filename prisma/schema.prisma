@@ -134,6 +134,14 @@ model User {
   unitId        String?    @map("unit_id") @db.Uuid
   unit          Unit?      @relation(fields: [unitId], references: [id])
 
+  // Self-referencing manager hierarchy — populated by Darwinbox profile sync.
+  // managerId stores the UUID of this user's direct line manager.
+  // Resoled at sync time by looking up the manager's employeeId (Darwinbox
+  // `reporting_manager_employee_id`) in the users table.
+  managerId     String?    @map("manager_id") @db.Uuid
+  manager       User?      @relation("DirectReports", fields: [managerId], references: [id])
+  subordinates  User[]     @relation("DirectReports")
+
   // Refresh token stored hashed; null when logged out
   refreshTokenHash String? @map("refresh_token_hash")
 
@@ -150,6 +158,7 @@ model User {
   leaveApprovals LeaveApproval[]
 
   @@index([unitId])
+  @@index([managerId])
   @@index([status])
   // Raw SQL GIN index on payload is defined in a migration — see note below.
   // Prisma does not natively emit GIN index syntax; use prisma/migrations for it.
