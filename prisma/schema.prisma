@@ -153,9 +153,13 @@ model User {
   updatedAt     DateTime   @updatedAt @map("updated_at")
   deletedAt     DateTime?  @map("deleted_at") // soft delete
 
-  roles         UserRole[]
-  leaveRequests LeaveRequest[]
-  leaveApprovals LeaveApproval[]
+  roles            UserRole[]
+  leaveRequests    LeaveRequest[]
+  leaveApprovals   LeaveApproval[]
+  shiftAssignments ShiftAssignment[]
+  attendanceDaily  AttendanceDaily[]
+  attendanceLogs   AttendanceLog[]
+  leaveBalances    LeaveBalance[]
 
   @@index([unitId])
   @@index([managerId])
@@ -174,6 +178,176 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+}
+
+// =============================================================================
+// TIME MANAGEMENT — Attendance & Leave Balance
+// =============================================================================
+
+enum DayType {
+  WORKING_DAY
+  WEEKOFF
+  PUBLIC_HOLIDAY
+  REST_DAY
+}
+
+enum AttendanceSource {
+  BIOMETRIC
+  MOBILE_GPS
+  WEB
+}
+
+// Canonical shift definition.  Policy rules (grace thresholds, overtime caps,
+// absent-cutoff minutes, weekend day mask) live in the `payload` JSONB column
+// so they can evolve without schema migrations.
+model ShiftDefinition {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String   @unique
+  code             String   @unique
+  startTime        String   @map("start_time")          // "HH:MM" 24h
+  endTime          String   @map("end_time")            // "HH:MM" 24h
+  isOvernight      Boolean  @default(false) @map("is_overnight")
+  gracePeriodMins  Int      @default(0)  @map("grace_period_mins")
+  overtimeEligible Boolean  @default(true) @map("overtime_eligible")
+  weekendDays      Int[]    @map("weekend_days")        // 0=Sun … 6=Sat
+
+  // JSONB: { rules: ShiftPolicyRule[], overtimeCapMins, absentCutoffMins }
+  payload          Json?    @db.JsonB
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt     @map("updated_at")
+
+  assignments      ShiftAssignment[]
+  attendanceDaily  AttendanceDaily[]
+
+  @@map("shift_definitions")
+}
+
+// Per-employee effective shift window.  An employee can have overlapping
+// assignments (e.g. permanent + project-based override); the service picks the
+// latest effective record that has not yet expired.
+model ShiftAssignment {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String          @map("user_id")   @db.Uuid
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftId       String          @map("shift_id")  @db.Uuid
+  shift         ShiftDefinition @relation(fields: [shiftId], references: [id])
+  effectiveDate DateTime        @map("effective_date") @db.Date
+  expiryDate    DateTime?       @map("expiry_date")    @db.Date
+
+  // JSONB: branch overrides, dinas-luar location pool extensions
+  payload       Json?           @db.JsonB
+
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt     @map("updated_at")
+
+  @@index([userId, effectiveDate])
+  @@map("shift_assignments")
+}
+
+// One row per employee per calendar day.  Updated in-place by the clock-event
+// pipeline as events arrive throughout the day.
+//
+// JSONB payload stores:
+//   currentLocationContext  — last-accepted geofence location snapshot
+//   allowedLocationsPool    — pool snapshot at the time of the last event
+//   dailySummaryJobId       — BullMQ job ID for the end-of-day aggregation
+model AttendanceDaily {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String          @map("user_id")       @db.Uuid
+  user           User            @relation(fields: [userId], references: [id])
+  attendanceDate DateTime        @map("attendance_date") @db.Date
+  shiftId        String?         @map("shift_id")      @db.Uuid
+  shift          ShiftDefinition? @relation(fields: [shiftId], references: [id])
+  firstClockIn   DateTime?       @map("first_clock_in")
+  lastClockOut   DateTime?       @map("last_clock_out")
+  totalWorkMins  Int?            @map("total_work_mins")
+  isLate         Boolean         @default(false) @map("is_late")
+  lateByMins     Int?            @map("late_by_mins")
+  overtimeMins   Int?            @map("overtime_mins")
+  dayType        DayType         @default(WORKING_DAY) @map("day_type")
+
+  payload        Json?           @db.JsonB
+
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt     @map("updated_at")
+
+  logs           AttendanceLog[]
+
+  @@unique([userId, attendanceDate])
+  @@index([userId])
+  @@index([attendanceDate])
+  @@map("attendance_daily")
+}
+
+// Immutable raw event stream.  One row per clock-in or clock-out tap.
+// Bulk-read by GetAttendanceLog; written by the clock-event pipeline.
+model AttendanceLog {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dailyId          String          @map("daily_id") @db.Uuid
+  daily            AttendanceDaily @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  userId           String          @map("user_id")  @db.Uuid
+  user             User            @relation(fields: [userId], references: [id])
+  eventType        String          @map("event_type")   // "clock_in" | "clock_out"
+  source           AttendanceSource
+  loggedAt         DateTime        @map("logged_at")
+  latitude         Decimal?        @db.Decimal(10, 8)
+  longitude        Decimal?        @db.Decimal(11, 8)
+  resolvedLocation String?         @map("resolved_location")
+  geofenceMatched  Boolean?        @map("geofence_matched")
+
+  // JSONB: { deviceInfo: {deviceId, deviceType, osVersion, appVersion}, ipAddress, antiFraudFlags }
+  payload          Json?           @db.JsonB
+
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([dailyId])
+  @@index([userId, loggedAt])
+  @@map("attendance_logs")
+}
+
+// Per-employee per-year leave balance per category.
+// entitled + carried - used - pending = remaining (computed in the service layer).
+// Policy config (gender constraints, document requirements, half-day rules) lives
+// in the `payload` JSONB to avoid adding a column per policy knob.
+model LeaveBalance {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year      Int
+  leaveType LeaveType @map("leave_type")
+  entitled  Decimal   @db.Decimal(5, 1)
+  used      Decimal   @db.Decimal(5, 1)
+  pending   Decimal   @db.Decimal(5, 1)
+  carried   Decimal   @db.Decimal(5, 1)
+
+  // JSONB: { expiryDate, color, allowHalfDay, requiresDocument, documentTypes,
+  //          genderConstraint, maxConsecutiveDays, minAdvanceDays }
+  payload   Json?     @db.JsonB
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt     @map("updated_at")
+
+  @@unique([userId, year, leaveType])
+  @@index([userId, year])
+  @@map("leave_balances")
+}
+
+// Countrywide and regional public holidays.  Used by getDayStatus and
+// GetDataForLeavePattern to populate blackout date arrays.
+model PublicHoliday {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date        DateTime @db.Date
+  name        String
+  countryCode String   @map("country_code")
+  regionCode  String?  @map("region_code")
+  isOptional  Boolean  @default(false) @map("is_optional")
+
+  payload     Json?    @db.JsonB
+
+  @@unique([date, countryCode])
+  @@index([date])
+  @@map("public_holidays")
 }
 
 // =============================================================================

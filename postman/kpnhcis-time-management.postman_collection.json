@@ -1,0 +1,1067 @@
+{
+  "info": {
+    "_postman_id": "c7e2f841-3b09-4d5a-a8f2-91dc04e7b3a6",
+    "name": "KPNHCIS — Time Management & Leaves (v1 Integration Suite)",
+    "description": "Production-grade automated integration test collection for all 10 Time Management & Leaves endpoints.\n\n**Auth**: Collection-level Bearer token via {{jwtToken}}.\n**Dates**: Collection pre-request script injects {{todayStr}}, {{startWindowStr}}, {{endWindowStr}} as normalized UTC-midnight ISO dates — tests never rot.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwtToken}}",
+        "type": "string"
+      }
+    ]
+  },
+
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "id": "coll-prereq-dates",
+        "type": "text/javascript",
+        "exec": [
+          "// ─── Dynamic UTC-midnight date anchors ───────────────────────────────────────",
+          "// Recalculated fresh on every collection run so date-range assertions",
+          "// never drift against the live server timeline.",
+          "",
+          "const now   = new Date();",
+          "const today = new Date(Date.UTC(",
+          "  now.getUTCFullYear(),",
+          "  now.getUTCMonth(),",
+          "  now.getUTCDate()",
+          "));",
+          "",
+          "const toISO = (d) => d.toISOString().slice(0, 10);",
+          "",
+          "const startWindow = new Date(today.getTime() - 14 * 86_400_000);",
+          "const endWindow   = new Date(today.getTime() + 14 * 86_400_000);",
+          "",
+          "pm.collectionVariables.set('todayStr',       toISO(today));",
+          "pm.collectionVariables.set('startWindowStr', toISO(startWindow));",
+          "pm.collectionVariables.set('endWindowStr',   toISO(endWindow));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "id": "coll-test-noop",
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "API host — override per environment (dev / staging / prod)"
+    },
+    {
+      "key": "jwtToken",
+      "value": "",
+      "type": "string",
+      "description": "JWT access token — populate via a login pre-run or environment override"
+    },
+    {
+      "key": "targetEmployeeId",
+      "value": "",
+      "type": "string",
+      "description": "Optional: Darwinbox source_employee_id, internal employeeId, or UUID for cross-user admin tests. Leave blank to default to the JWT principal."
+    },
+    {
+      "key": "todayStr",
+      "value": "",
+      "type": "string",
+      "description": "Injected by collection pre-request script — do not edit manually"
+    },
+    {
+      "key": "startWindowStr",
+      "value": "",
+      "type": "string",
+      "description": "Injected by collection pre-request script — do not edit manually"
+    },
+    {
+      "key": "endWindowStr",
+      "value": "",
+      "type": "string",
+      "description": "Injected by collection pre-request script — do not edit manually"
+    }
+  ],
+
+  "item": [
+
+    {
+      "name": "01 · GetAttendanceDetails (Daily Timesheet Bootstrap)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-attendance-details",
+            "type": "text/javascript",
+            "exec": [
+              "// ── Envelope ─────────────────────────────────────────────────────────────────",
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data.columns ─────────────────────────────────────────────────────────────",
+              "pm.test('data.columns is a non-empty array', () => {",
+              "  pm.expect(body.data.columns).to.be.an('array').and.to.have.lengthOf.at.least(1);",
+              "});",
+              "",
+              "pm.test('Each column entry carries key and title strings', () => {",
+              "  body.data.columns.forEach(col => {",
+              "    pm.expect(col.key).to.be.a('string');",
+              "    pm.expect(col.title).to.be.a('string');",
+              "  });",
+              "});",
+              "",
+              "// ── data.shift ───────────────────────────────────────────────────────────────",
+              "pm.test('data.shift carries required DWShiftDetails wire fields', () => {",
+              "  const shift = body.data.shift;",
+              "  pm.expect(shift).to.include.all.keys([",
+              "    'id', 'shift_name', 'begin_time', 'end_time',",
+              "    'begin_time_string', 'end_time_string', 'total_hours',",
+              "    'is_overnight', 'is_null_shift'",
+              "  ]);",
+              "});",
+              "",
+              "pm.test('shift.is_overnight is 0|1 integer-boolean', () => {",
+              "  pm.expect([0, 1]).to.include(body.data.shift.is_overnight);",
+              "});",
+              "",
+              "pm.test('shift.is_null_shift is 0|1 integer-boolean', () => {",
+              "  pm.expect([0, 1]).to.include(body.data.shift.is_null_shift);",
+              "});",
+              "",
+              "// ── data.ot_reasons ──────────────────────────────────────────────────────────",
+              "pm.test('data.ot_reasons is an array', () => {",
+              "  pm.expect(body.data.ot_reasons).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start_date\": \"{{startWindowStr}}\",\n  \"end_date\":   \"{{endWindowStr}}\",\n  \"user_id\":    \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/attendance/attendanceAPI/GetAttendanceDetails",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "attendance", "attendanceAPI", "GetAttendanceDetails"]
+        },
+        "description": "Context-bootstrap endpoint.  Returns the active shift card, static DataTable column definitions, and the org's OT reason catalogue."
+      },
+      "response": []
+    },
+
+    {
+      "name": "02 · GetAttendancePoliciesDetails (Geofence & OT Rules)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-attendance-policies",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── Top-level data keys ───────────────────────────────────────────────────────",
+              "pm.test('data carries all five policy sections', () => {",
+              "  pm.expect(body.data).to.include.all.keys([",
+              "    'geo_fencing',",
+              "    'attendance_policy',",
+              "    'overtime_policy',",
+              "    'tenant_shift',",
+              "    'pay_group'",
+              "  ]);",
+              "});",
+              "",
+              "// ── geo_fencing ───────────────────────────────────────────────────────────────",
+              "pm.test('data.geo_fencing is a record object (keyed by 14-char hex)', () => {",
+              "  pm.expect(body.data.geo_fencing).to.be.an('object');",
+              "  const entries = Object.entries(body.data.geo_fencing);",
+              "  entries.forEach(([key, val]) => {",
+              "    pm.expect(key).to.match(/^[0-9a-f]{14}$/i, `geo_fencing key '${key}' must be 14-char hex`);",
+              "    pm.expect(val).to.include.all.keys(['label', 'long', 'latt', 'distance']);",
+              "  });",
+              "});",
+              "",
+              "// ── attendance_policy ─────────────────────────────────────────────────────────",
+              "pm.test('data.attendance_policy carries policy_data and table_body', () => {",
+              "  const ap = body.data.attendance_policy;",
+              "  pm.expect(ap).to.include.all.keys(['policy_data', 'table_headers', 'table_body']);",
+              "  pm.expect(ap.table_body).to.be.an('array');",
+              "});",
+              "",
+              "// ── overtime_policy ───────────────────────────────────────────────────────────",
+              "pm.test('data.overtime_policy.is_enabled is 0|1', () => {",
+              "  pm.expect([0, 1]).to.include(body.data.overtime_policy.is_enabled);",
+              "});",
+              "",
+              "// ── tenant_shift ──────────────────────────────────────────────────────────────",
+              "pm.test('data.tenant_shift carries shift_id, shift_name, begin_time, end_time', () => {",
+              "  const ts = body.data.tenant_shift;",
+              "  pm.expect(ts).to.include.all.keys(['shift_id', 'shift_name', 'begin_time', 'end_time']);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"date\":    \"{{todayStr}}\",\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/attendance/attendanceAPI/GetAttendancePoliciesDetails",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "attendance", "attendanceAPI", "GetAttendancePoliciesDetails"]
+        },
+        "description": "Returns the geo-fencing pool, attendance policy rules, OT policy tiers, tenant shift card, and pay-group metadata for the resolved employee."
+      },
+      "response": []
+    },
+
+    {
+      "name": "03 · getDayStatus (Single-Day Inspector)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-day-status",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "const d    = body.data;",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── All 16 DWDayStatusData wire fields present ────────────────────────────────",
+              "pm.test('data carries all 16 DWDayStatusData wire fields', () => {",
+              "  pm.expect(d).to.include.all.keys([",
+              "    'total_duration',",
+              "    'shift_duration',",
+              "    'day',",
+              "    'action_label',",
+              "    'clockin_time',",
+              "    'clockout_time',",
+              "    'clockinout_label',",
+              "    'user_id',",
+              "    'tenant_id',",
+              "    'shift_date',",
+              "    'log_id',",
+              "    'clockin_time_string',",
+              "    'clockout_time_string',",
+              "    'enable_break',",
+              "    'show_break',",
+              "    'break_label'",
+              "  ]);",
+              "});",
+              "",
+              "// ── shift_duration: 'H:mm:ss' — no leading zero on hours ─────────────────────",
+              "pm.test('shift_duration matches H:mm:ss pattern (no leading zero)', () => {",
+              "  pm.expect(d.shift_duration).to.match(",
+              "    /^\\d+:\\d{2}:\\d{2}$/,",
+              "    `shift_duration '${d.shift_duration}' must be H:mm:ss format`",
+              "  );",
+              "});",
+              "",
+              "// ── day and shift_date are ISO date strings ───────────────────────────────────",
+              "pm.test('day is a YYYY-MM-DD string', () => {",
+              "  pm.expect(d.day).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "});",
+              "",
+              "pm.test('shift_date mirrors day', () => {",
+              "  pm.expect(d.shift_date).to.eql(d.day);",
+              "});",
+              "",
+              "// ── Permanently-null / sentinel fields ────────────────────────────────────────",
+              "pm.test('enable_break is null (break management disabled)', () => {",
+              "  pm.expect(d.enable_break).to.be.null;",
+              "});",
+              "",
+              "pm.test('show_break is null (break UI suppressed)', () => {",
+              "  pm.expect(d.show_break).to.be.null;",
+              "});",
+              "",
+              "pm.test('break_label is an empty string sentinel', () => {",
+              "  pm.expect(d.break_label).to.eql('');",
+              "});",
+              "",
+              "// ── log_id: 14-char hex or empty string ───────────────────────────────────────",
+              "pm.test('log_id is a 14-char hex string or empty (no daily row)', () => {",
+              "  if (d.log_id !== '') {",
+              "    pm.expect(d.log_id).to.match(/^[0-9a-f]{14}$/i);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"date\":    \"{{todayStr}}\",\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/attendance/attendanceAPI/getDayStatus",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "attendance", "attendanceAPI", "getDayStatus"]
+        },
+        "description": "Single-date punch inspector.  Returns 16-field DWDayStatusData including shift_duration in 'H:mm:ss' (no leading zero) and all permanently-null break fields."
+      },
+      "response": []
+    },
+
+    {
+      "name": "04 · GetLeaveCommonDetails (Leave Balance Card)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-leave-common-details",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── Top-level data keys ───────────────────────────────────────────────────────",
+              "pm.test('data carries leaves_taken, system_leaves_list, leave_recipients', () => {",
+              "  pm.expect(body.data).to.include.all.keys([",
+              "    'leaves_taken',",
+              "    'system_leaves_list',",
+              "    'leave_recipients'",
+              "  ]);",
+              "});",
+              "",
+              "// ── leaves_taken ─────────────────────────────────────────────────────────────",
+              "pm.test('data.leaves_taken is a record object', () => {",
+              "  pm.expect(body.data.leaves_taken).to.be.an('object');",
+              "});",
+              "",
+              "pm.test('Each leaves_taken card has required DWLeaveCardDetail fields', () => {",
+              "  Object.entries(body.data.leaves_taken).forEach(([key, card]) => {",
+              "    pm.expect(key).to.match(/^(unpaid_)?[0-9a-f]{14}$/i, `key '${key}' must be 14-char hex or unpaid_ prefix`);",
+              "    pm.expect(card).to.include.all.keys([",
+              "      'dont_show_in_front_end',",
+              "      'dont_show_in_application',",
+              "      'color_code',",
+              "      'currently_available'",
+              "    ]);",
+              "  });",
+              "});",
+              "",
+              "pm.test('currently_available accepts string|number union (Darwinbox legacy)', () => {",
+              "  Object.values(body.data.leaves_taken).forEach(card => {",
+              "    const t = typeof card.currently_available;",
+              "    pm.expect(['string', 'number']).to.include(t,",
+              "      `currently_available must be string|number, got ${t}`",
+              "    );",
+              "  });",
+              "});",
+              "",
+              "// ── system_leaves_list ────────────────────────────────────────────────────────",
+              "pm.test('system_leaves_list maps same hex keys to display name strings', () => {",
+              "  pm.expect(body.data.system_leaves_list).to.be.an('object');",
+              "  Object.values(body.data.system_leaves_list).forEach(name => {",
+              "    pm.expect(name).to.be.a('string').and.to.have.lengthOf.at.least(1);",
+              "  });",
+              "});",
+              "",
+              "// ── leave_recipients ──────────────────────────────────────────────────────────",
+              "pm.test('leave_recipients is an array', () => {",
+              "  pm.expect(body.data.leave_recipients).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leaves/leavesApi/GetLeaveCommonDetails",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leaves", "leavesApi", "GetLeaveCommonDetails"]
+        },
+        "description": "Leave application dashboard hydration.  Returns per-type leave cards with live balance, restriction messages, approval chain recipients, and a flat label dictionary."
+      },
+      "response": []
+    },
+
+    {
+      "name": "05 · getUpcomingTimeOff (Chronological Timeline Feed)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-upcoming-timeoff",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data is a flat array ──────────────────────────────────────────────────────",
+              "pm.test('data is an array', () => {",
+              "  pm.expect(body.data).to.be.an('array');",
+              "});",
+              "",
+              "// ── Each entry carries the 4-field DWUpcomingTimeOffEntry contract ──────────",
+              "pm.test('Each upcoming entry has id, title, date, day, type', () => {",
+              "  body.data.forEach((entry, i) => {",
+              "    pm.expect(entry, `entry[${i}] missing fields`).to.include.all.keys([",
+              "      'id', 'title', 'date', 'day', 'type'",
+              "    ]);",
+              "  });",
+              "});",
+              "",
+              "pm.test('date is YYYY-MM-DD, day is full English weekday name', () => {",
+              "  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];",
+              "  body.data.forEach((entry, i) => {",
+              "    pm.expect(entry.date, `entry[${i}].date`).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "    pm.expect(DAYS, `entry[${i}].day '${entry.day}' must be valid weekday`).to.include(entry.day);",
+              "  });",
+              "});",
+              "",
+              "pm.test('type is National Holiday or a leave display name string', () => {",
+              "  body.data.forEach((entry, i) => {",
+              "    pm.expect(entry.type, `entry[${i}].type`).to.be.a('string').and.to.have.lengthOf.at.least(1);",
+              "  });",
+              "});",
+              "",
+              "// ── Chronological order: dates must be non-decreasing ─────────────────────",
+              "pm.test('Entries are sorted chronologically (non-decreasing dates)', () => {",
+              "  for (let i = 1; i < body.data.length; i++) {",
+              "    pm.expect(body.data[i].date >= body.data[i - 1].date,",
+              "      `entry[${i}].date '${body.data[i].date}' must be >= entry[${i-1}].date '${body.data[i-1].date}'`",
+              "    ).to.be.true;",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leaves/leavesApi/getUpcomingTimeOff",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leaves", "leavesApi", "getUpcomingTimeOff"]
+        },
+        "description": "Chronological merged feed of upcoming national public holidays and approved personal leaves.  Default window: today → +90 days."
+      },
+      "response": []
+    },
+
+    {
+      "name": "06 · getTeamStatus (Department Peer Visibility)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-team-status",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data is a Record<YYYY-MM-DD, DWTeamTimeOffBlock[]> ────────────────────────",
+              "pm.test('data is a record object keyed by YYYY-MM-DD date strings', () => {",
+              "  pm.expect(body.data).to.be.an('object');",
+              "  Object.keys(body.data).forEach(key => {",
+              "    pm.expect(key).to.match(/^\\d{4}-\\d{2}-\\d{2}$/, `key '${key}' must be YYYY-MM-DD`);",
+              "  });",
+              "});",
+              "",
+              "// ── Each day maps to an array of DWTeamTimeOffBlock items ─────────────────────",
+              "pm.test('Each date entry maps to an array of DWTeamTimeOffBlock items', () => {",
+              "  Object.entries(body.data).forEach(([date, blocks]) => {",
+              "    pm.expect(blocks, `blocks for ${date}`).to.be.an('array');",
+              "  });",
+              "});",
+              "",
+              "pm.test('Each block carries type, title, users — or is an empty sentinel', () => {",
+              "  Object.entries(body.data).forEach(([date, blocks]) => {",
+              "    blocks.forEach((block, i) => {",
+              "      pm.expect(block, `${date}[${i}] missing fields`).to.include.all.keys([",
+              "        'type', 'title', 'users'",
+              "      ]);",
+              "      pm.expect(block.users, `${date}[${i}].users`).to.be.an('array');",
+              "    });",
+              "  });",
+              "});",
+              "",
+              "pm.test('Each user snapshot in a non-empty block has required profile fields', () => {",
+              "  Object.entries(body.data).forEach(([date, blocks]) => {",
+              "    blocks.forEach((block, i) => {",
+              "      if (block.users.length > 0) {",
+              "        block.users.forEach((snap, j) => {",
+              "          pm.expect(snap, `${date}[${i}].users[${j}]`).to.include.all.keys([",
+              "            'employee_id', 'full_name', 'leave_type', 'start_date', 'end_date'",
+              "          ]);",
+              "        });",
+              "      }",
+              "    });",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start_date\": \"{{todayStr}}\",\n  \"end_date\":   \"{{endWindowStr}}\",\n  \"user_id\":    \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leaves/leavesApi/getTeamStatus",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leaves", "leavesApi", "getTeamStatus"]
+        },
+        "description": "Day-by-day peer visibility matrix.  Returns a Record<YYYY-MM-DD, DWTeamTimeOffBlock[]> covering national holidays and approved leaves within the requesting user's organizational unit."
+      },
+      "response": []
+    },
+
+    {
+      "name": "07 · GetAttendanceLog (Comprehensive Monthly Ledger)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-attendance-log",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data.logs is a Record<YYYY-MM-DD, DWDayLogLedgerEntry> ───────────────────",
+              "pm.test('data.logs is a record object keyed by YYYY-MM-DD', () => {",
+              "  pm.expect(body.data.logs).to.be.an('object');",
+              "  Object.keys(body.data.logs).forEach(key => {",
+              "    pm.expect(key).to.match(/^\\d{4}-\\d{2}-\\d{2}$/, `log key '${key}' must be YYYY-MM-DD`);",
+              "  });",
+              "});",
+              "",
+              "// ── Full 36-field DWDayLogLedgerEntry contract on every entry ─────────────────",
+              "pm.test('Each ledger entry carries all required DWDayLogLedgerEntry wire fields', () => {",
+              "  const REQUIRED_FIELDS = [",
+              "    'date', 'clock_in', 'clock_out',",
+              "    'break_duration', 'paid_break', 'unpaid_break',",
+              "    'final_work_duration', 'total_work_duration', 'short_leave_duration',",
+              "    'overtime', 'late_mark', 'early_out',",
+              "    'first_clockin', 'first_clockout',",
+              "    'attendance_status', 'request_status',",
+              "    'location', 'timesheet_status', 'timesheet_duration',",
+              "    'actions', 'user_attendance_details',",
+              "    'is_overnight', 'purpose',",
+              "    'present_count', 'absent_count', 'leave_count', 'unpaid_count',",
+              "    'request_id', 'log_id', 'is_policy_applicable',",
+              "    'append_to_status', 'manager_comment', 'work_transfer_details',",
+              "    'is_holiday', 'is_weekoff', 'is_leave'",
+              "  ];",
+              "  Object.entries(body.data.logs).forEach(([date, entry]) => {",
+              "    pm.expect(entry, `entry for ${date}`).to.include.all.keys(REQUIRED_FIELDS);",
+              "  });",
+              "});",
+              "",
+              "// ── date in entry is DD-MM-YYYY (asymmetric inversion from outer YYYY-MM-DD key) ──",
+              "pm.test('entry.date is DD-MM-YYYY (Darwinbox local display inversion)', () => {",
+              "  Object.entries(body.data.logs).forEach(([isoKey, entry]) => {",
+              "    pm.expect(entry.date).to.match(/^\\d{2}-\\d{2}-\\d{4}$/,",
+              "      `entry.date '${entry.date}' must be DD-MM-YYYY`",
+              "    );",
+              "    // Verify the inversion is consistent with the outer YYYY-MM-DD key",
+              "    const [y, m, d] = isoKey.split('-');",
+              "    pm.expect(entry.date).to.eql(`${d}-${m}-${y}`);",
+              "  });",
+              "});",
+              "",
+              "// ── Window-level counters are stamped identically on all entries ─────────────",
+              "pm.test('Window-level counters are identical across all ledger entries', () => {",
+              "  const entries = Object.values(body.data.logs);",
+              "  if (entries.length > 1) {",
+              "    const ref = entries[0];",
+              "    entries.forEach((entry, i) => {",
+              "      pm.expect(entry.present_count, `entry[${i}].present_count`).to.eql(ref.present_count);",
+              "      pm.expect(entry.absent_count,  `entry[${i}].absent_count`).to.eql(ref.absent_count);",
+              "      pm.expect(entry.leave_count,   `entry[${i}].leave_count`).to.eql(ref.leave_count);",
+              "      pm.expect(entry.unpaid_count,  `entry[${i}].unpaid_count`).to.eql(ref.unpaid_count);",
+              "    });",
+              "  }",
+              "});",
+              "",
+              "// ── actions block ─────────────────────────────────────────────────────────────",
+              "pm.test('actions block carries required 0|1 permission toggles', () => {",
+              "  Object.entries(body.data.logs).forEach(([date, entry]) => {",
+              "    const a = entry.actions;",
+              "    pm.expect(a).to.include.all.keys([",
+              "      'is_edit', 'is_delete', 'singleday_request',",
+              "      'ot_journal_enable', 'att_register_enable', 'attendance_shift_change'",
+              "    ]);",
+              "    Object.values(a).forEach(v => pm.expect([0, 1]).to.include(v));",
+              "  });",
+              "});",
+              "",
+              "// ── request_status and work_transfer_details are always empty ─────────────────",
+              "pm.test('request_status and work_transfer_details are always empty arrays', () => {",
+              "  Object.entries(body.data.logs).forEach(([date, entry]) => {",
+              "    pm.expect(entry.request_status,      `${date}.request_status`).to.eql([]);",
+              "    pm.expect(entry.work_transfer_details, `${date}.work_transfer_details`).to.eql([]);",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start_date\": \"{{startWindowStr}}\",\n  \"end_date\":   \"{{endWindowStr}}\",\n  \"user_id\":    \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/attendance/attendanceAPI/GetAttendanceLog",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "attendance", "attendanceAPI", "GetAttendanceLog"]
+        },
+        "description": "Continuous 36-field daily ledger.  Outer keys are YYYY-MM-DD; entry.date is the asymmetrically inverted DD-MM-YYYY for Darwinbox display compatibility."
+      },
+      "response": []
+    },
+
+    {
+      "name": "08 · GetAttendanceOverview (Time-Series Analytics)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-attendance-overview",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "const data = body.data;",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data.details is a continuous date-series array ────────────────────────────",
+              "pm.test('data.details is a non-empty array', () => {",
+              "  pm.expect(data.details).to.be.an('array').and.to.have.lengthOf.at.least(1);",
+              "});",
+              "",
+              "pm.test('Each details entry carries title (YYYY-MM-DD) and summary object', () => {",
+              "  data.details.forEach((entry, i) => {",
+              "    pm.expect(entry.title, `entry[${i}].title`).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "    pm.expect(entry.summary, `entry[${i}].summary`).to.be.an('object');",
+              "  });",
+              "});",
+              "",
+              "pm.test('Each summary carries all 10 DWDaySummary wire fields', () => {",
+              "  const SUMMARY_FIELDS = [",
+              "    'present_days', 'absent_days', 'leave_days',",
+              "    'avg_work_duration', 'total_work_duration',",
+              "    'avg_late_by', 'avg_overtime',",
+              "    'is_non_working_day', 'non_working_duration', 'total_absent_duration'",
+              "  ];",
+              "  data.details.forEach((entry, i) => {",
+              "    pm.expect(entry.summary, `entry[${i}].summary`).to.include.all.keys(SUMMARY_FIELDS);",
+              "  });",
+              "});",
+              "",
+              "// ── overall_summary ───────────────────────────────────────────────────────────",
+              "pm.test('data.overall_summary carries all 9 DWOverallSummary wire fields', () => {",
+              "  pm.expect(data.overall_summary).to.include.all.keys([",
+              "    'present_days', 'absent_days', 'leave_days',",
+              "    'total_work_duration', 'avg_work_duration',",
+              "    'total_late_by', 'avg_late_by',",
+              "    'avg_overtime', 'total_overtime'",
+              "  ]);",
+              "});",
+              "",
+              "// ── total_work_duration: 'H:mm:ss' — no leading zero (DW overall_summary quirk)",
+              "pm.test('overall_summary.total_work_duration is H:mm:ss (no leading zero on hours)', () => {",
+              "  pm.expect(data.overall_summary.total_work_duration).to.match(",
+              "    /^\\d+:\\d{2}:\\d{2}$/,",
+              "    `total_work_duration '${data.overall_summary.total_work_duration}' must be H:mm:ss`",
+              "  );",
+              "});",
+              "",
+              "pm.test('overall_summary.avg_work_duration is H:mm:ss (no leading zero)', () => {",
+              "  pm.expect(data.overall_summary.avg_work_duration).to.match(",
+              "    /^\\d+:\\d{2}:\\d{2}$/,",
+              "    `avg_work_duration '${data.overall_summary.avg_work_duration}' must be H:mm:ss`",
+              "  );",
+              "});",
+              "",
+              "// ── Minute-truncation invariant: seconds component must always be '00' ────────",
+              "pm.test('avg_work_duration seconds component is 00 (Darwinbox minute-truncation rule)', () => {",
+              "  const secs = data.overall_summary.avg_work_duration.split(':')[2];",
+              "  pm.expect(secs).to.eql('00', `Expected seconds=00, got ${secs}`);",
+              "});",
+              "",
+              "pm.test('total_work_duration seconds component is 00 (Darwinbox minute-truncation rule)', () => {",
+              "  const secs = data.overall_summary.total_work_duration.split(':')[2];",
+              "  pm.expect(secs).to.eql('00', `Expected seconds=00, got ${secs}`);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start_date\": \"{{startWindowStr}}\",\n  \"end_date\":   \"{{endWindowStr}}\",\n  \"user_id\":    \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/attendance/attendanceAPI/GetAttendanceOverview",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "attendance", "attendanceAPI", "GetAttendanceOverview"]
+        },
+        "description": "Day-by-day analytics dashboard.  overall_summary aggregates use raw timestamp seconds for precision, then apply the Darwinbox minute-truncation rule (seconds component must always be '00')."
+      },
+      "response": []
+    },
+
+    {
+      "name": "09 · GetDataForLeavePattern (12-Month Consumption Matrix)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-leave-pattern",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── history_details is always an empty array ──────────────────────────────────",
+              "pm.test('history_details is always an empty array (wire sentinel)', () => {",
+              "  pm.expect(body.history_details).to.eql([]);",
+              "});",
+              "",
+              "// ── data contains exactly 12 month keys ──────────────────────────────────────",
+              "pm.test('data contains exactly 12 month entries', () => {",
+              "  pm.expect(Object.keys(body.data)).to.have.lengthOf(12);",
+              "});",
+              "",
+              "pm.test('All 12 YYYY-MM month keys from requested year are present', () => {",
+              "  // Body sent year: 2026 — infer from first key if possible, else default.",
+              "  const firstKey = Object.keys(body.data)[0];",
+              "  const year = firstKey ? firstKey.slice(0, 4) : '2026';",
+              "  for (let m = 1; m <= 12; m++) {",
+              "    const monthKey = `${year}-${String(m).padStart(2, '0')}`;",
+              "    pm.expect(body.data, `missing key ${monthKey}`).to.have.property(monthKey);",
+              "  }",
+              "});",
+              "",
+              "// ── Each month sub-dict maps leave-type keys to numeric day counters ──────────",
+              "pm.test('Each month entry is an object with leave-type keys mapping to numbers', () => {",
+              "  Object.entries(body.data).forEach(([month, monthData]) => {",
+              "    pm.expect(monthData, `${month} must be an object`).to.be.an('object');",
+              "    Object.entries(monthData).forEach(([leaveKey, count]) => {",
+              "      pm.expect(leaveKey).to.match(",
+              "        /^(unpaid_)?[0-9a-f]{14}$/i,",
+              "        `leave key '${leaveKey}' must be 14-char hex or unpaid_ prefix`",
+              "      );",
+              "      pm.expect(count, `${month}['${leaveKey}']`).to.be.a('number').and.to.be.at.least(0);",
+              "    });",
+              "  });",
+              "});",
+              "",
+              "// ── Skeleton invariant: all 12 months must include the same key set ───────────",
+              "pm.test('All 12 months carry the same leave-type key set (skeleton pre-populated to 0)', () => {",
+              "  const monthEntries = Object.values(body.data);",
+              "  if (monthEntries.length === 12) {",
+              "    const referenceKeys = JSON.stringify(Object.keys(monthEntries[0]).sort());",
+              "    monthEntries.forEach((monthData, i) => {",
+              "      pm.expect(",
+              "        JSON.stringify(Object.keys(monthData).sort()),",
+              "        `month[${i}] key set differs from month[0]`",
+              "      ).to.eql(referenceKeys);",
+              "    });",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"year\":    2026,\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leaves/leavesApi/GetDataForLeavePattern",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leaves", "leavesApi", "GetDataForLeavePattern"]
+        },
+        "description": "12-month leave consumption matrix.  All 12 YYYY-MM keys are pre-populated with 0 so the frontend can render chart skeletons without a second fetch."
+      },
+      "response": []
+    },
+
+    {
+      "name": "10 · GetLeaves (Deep Transactional Policy Ledger)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "test-get-leaves",
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "pm.test('Envelope: status === 1', () => {",
+              "  pm.expect(body.status).to.eql(1);",
+              "});",
+              "",
+              "// ── data is a non-empty record object ─────────────────────────────────────────",
+              "pm.test('data is a record object', () => {",
+              "  pm.expect(body.data).to.be.an('object');",
+              "});",
+              "",
+              "// ── Key naming: 14-char hex or unpaid_ prefix ────────────────────────────────",
+              "pm.test('All leave keys are 14-char hex (standard) or unpaid_ + 14-char hex (UNPAID)', () => {",
+              "  Object.keys(body.data).forEach(key => {",
+              "    pm.expect(key).to.match(",
+              "      /^(unpaid_)?[0-9a-f]{14}$/i,",
+              "      `key '${key}' must be 14-char hex or unpaid_ prefixed`",
+              "    );",
+              "  });",
+              "});",
+              "",
+              "// ── is_hourly: '0' — MUST be a string literal, not numeric 0 ────────────────",
+              "pm.test('is_hourly is the string literal \"0\" on every entry (Darwinbox wire invariant)', () => {",
+              "  Object.entries(body.data).forEach(([key, card]) => {",
+              "    pm.expect(card.is_hourly, `${key}.is_hourly`).to.eql('0');",
+              "    pm.expect(typeof card.is_hourly, `${key}.is_hourly type`).to.eql('string');",
+              "  });",
+              "});",
+              "",
+              "// ── Discriminated union split: standard vs UNPAID ─────────────────────────────",
+              "pm.test('Standard leave entries carry DWStandardLeaveEntry wire fields', () => {",
+              "  Object.entries(body.data).filter(([k]) => !k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card, `${key} (standard)`).to.include.all.keys([",
+              "      'show_application_info',",
+              "      'show_applicability_info',",
+              "      'settings_warning_info',",
+              "      'cycle',",
+              "      'pay_rate_info',",
+              "      'leave_id',",
+              "      'leave_name',",
+              "      'is_hybrid_cycle',",
+              "      'is_encashment',",
+              "      'policy_details',",
+              "      'custom_qa',",
+              "      'table_data',",
+              "      'current_cycle_start',",
+              "      'current_cycle_end',",
+              "      'is_hourly',",
+              "      'currently_available',",
+              "      'show_accrual_balance',",
+              "      'accrual_balance',",
+              "      'annual_allotment',",
+              "      'is_compoff',",
+              "      'is_xstate_guard_passing'",
+              "    ]);",
+              "  });",
+              "});",
+              "",
+              "pm.test('UNPAID leave entries carry DWUnpaidLeaveEntry discriminant fields', () => {",
+              "  Object.entries(body.data).filter(([k]) => k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card, `${key} (unpaid)`).to.include.all.keys([",
+              "      'show_application_info',",
+              "      'is_unpaid',",
+              "      'leave_id',",
+              "      'is_hourly',",
+              "      'leave_name',",
+              "      'already_taken',",
+              "      'applied',",
+              "      'system_deducted',",
+              "      'policy_details',",
+              "      'custom_qa',",
+              "      'is_xstate_guard_passing'",
+              "    ]);",
+              "    pm.expect(card.is_unpaid, `${key}.is_unpaid must be numeric literal 1`).to.eql(1);",
+              "  });",
+              "});",
+              "",
+              "// ── Wire invariants on standard entries ───────────────────────────────────────",
+              "pm.test('Standard entries: is_compoff === 0 (numeric literal), is_hybrid_cycle === 0', () => {",
+              "  Object.entries(body.data).filter(([k]) => !k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card.is_compoff,      `${key}.is_compoff`).to.eql(0);",
+              "    pm.expect(card.is_hybrid_cycle, `${key}.is_hybrid_cycle`).to.eql(0);",
+              "    pm.expect(card.show_accrual_balance, `${key}.show_accrual_balance`).to.eql(1);",
+              "  });",
+              "});",
+              "",
+              "pm.test('custom_qa and table_data are always empty arrays on standard entries', () => {",
+              "  Object.entries(body.data).filter(([k]) => !k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card.custom_qa,   `${key}.custom_qa`).to.eql([]);",
+              "    pm.expect(card.table_data,  `${key}.table_data`).to.eql([]);",
+              "  });",
+              "});",
+              "",
+              "pm.test('custom_qa is always empty array on UNPAID entries', () => {",
+              "  Object.entries(body.data).filter(([k]) => k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card.custom_qa, `${key}.custom_qa`).to.eql([]);",
+              "  });",
+              "});",
+              "",
+              "// ── currently_available: numeric string (not raw number) ──────────────────────",
+              "pm.test('currently_available on standard entries serialises as a numeric string', () => {",
+              "  Object.entries(body.data).filter(([k]) => !k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(typeof card.currently_available, `${key}.currently_available type`).to.eql('string');",
+              "    pm.expect(card.currently_available, `${key}.currently_available`).to.match(",
+              "      /^\\d+(\\.\\d+)?$/,",
+              "      `currently_available '${card.currently_available}' must be a numeric string`",
+              "    );",
+              "  });",
+              "});",
+              "",
+              "// ── is_xstate_guard_passing: boolean gate for XState v5 machine ───────────────",
+              "pm.test('is_xstate_guard_passing is a boolean on all entries', () => {",
+              "  Object.entries(body.data).forEach(([key, card]) => {",
+              "    pm.expect(typeof card.is_xstate_guard_passing, `${key}.is_xstate_guard_passing type`).to.eql('boolean');",
+              "  });",
+              "});",
+              "",
+              "// ── cycle boundary tokens on standard entries ─────────────────────────────────",
+              "pm.test('current_cycle_start and current_cycle_end are YYYY-MM-DD strings', () => {",
+              "  Object.entries(body.data).filter(([k]) => !k.startsWith('unpaid_')).forEach(([key, card]) => {",
+              "    pm.expect(card.current_cycle_start, `${key}.current_cycle_start`).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "    pm.expect(card.current_cycle_end,   `${key}.current_cycle_end`).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "    pm.expect(card.current_cycle_start <= card.current_cycle_end,",
+              "      `${key}: cycle_start must be <= cycle_end`).to.be.true;",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{targetEmployeeId}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leaves/leavesApi/GetLeaves",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leaves", "leavesApi", "GetLeaves"]
+        },
+        "description": "Deep transactional leave policy ledger.  Returns a discriminated-union dictionary: standard paid leaves (DWStandardLeaveEntry) vs UNPAID leaves (DWUnpaidLeaveEntry, discriminant is_unpaid: 1).  is_hourly is always the STRING '0', is_compoff always the NUMERIC 0."
+      },
+      "response": []
+    }
+
+  ]
+}

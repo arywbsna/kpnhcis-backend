@@ -43,6 +43,8 @@ export type SubjectName =
   | 'Permission'
   | 'LeaveRequest'
   | 'LeaveApproval'
+  | 'AttendanceRecord'      // attendance daily aggregates, raw logs, policy queries
+  | 'LeaveBalance'          // leave balance reads and pattern data
   | 'BusinessIntelligence'  // virtual subject for AI analytics endpoints — no DB model
   | 'all';
 

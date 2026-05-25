@@ -16,6 +16,7 @@ import { LeaveRequestModule } from './leave-request/leave-request.module';
 import { AiModule } from './modules/ai/ai.module';
 import { EmployeeProfileModule } from './modules/employee/employee-profile.module';
 import { LocalizationModule } from './modules/localization/localization.module';
+import { TimeManagementModule } from './modules/time-management/time-management.module';
 import { ProfilesModule } from './profiles/profiles.module';
 
 @Module({
@@ -100,6 +101,7 @@ import { ProfilesModule } from './profiles/profiles.module';
     AiModule,
     EmployeeProfileModule,
     LocalizationModule,
+    TimeManagementModule,
     ProfilesModule,
   ],
 })
