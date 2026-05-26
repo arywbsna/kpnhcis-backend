@@ -1,4 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // prisma/ is included in the base tsconfig so VS Code resolves seed.ts, but
+  // excluded here so `nest build` does not emit seed.ts into dist/.
+  "exclude": ["node_modules", "test", "dist", "prisma", "**/*spec.ts"]
 }
