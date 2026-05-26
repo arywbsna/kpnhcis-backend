@@ -27,61 +27,175 @@ Standardized, Enterprise-Grade Headless API for Human Capital Information System
 ---
 
 ## Getting Started
-- **Clone the Repository**
-Buka terminal atau command prompt Anda, lalu jalankan perintah berikut:
-```text
-git clone [https://github.com/arywbsna/kpnhcis-backend.git](https://github.com/arywbsna/kpnhcis-backend.git)
-cd kpnhcis-backend
-```
 
-- **Install Dependencies**
-Pastikan Node.js (Minimal v20 LTS) sudah terinstal di sistem Anda. Jalankan perintah ini untuk mengunduh semua package:
-```text
+> **Estimated setup time:** ~10 minutes on a machine with Node.js and PostgreSQL already installed.
+
+---
+
+### Prerequisites
+
+Ensure the following are installed and running before proceeding:
+
+| Tool | Minimum Version | Notes |
+|---|---|---|
+| **Node.js** | v20 LTS | v22 LTS recommended. Use [nvm](https://github.com/nvm-sh/nvm) to manage versions. |
+| **npm** | v10+ | Bundled with Node.js v20+. |
+| **PostgreSQL** | v14+ | Must be running locally or accessible via network. |
+| **Redis** | v6+ | Required for caching, BullMQ job queues, and Socket.IO adapter. |
+
+> **PostgreSQL extensions required:** `pg_trgm` (trigram full-text search) and `pgcrypto` (UUID generation). These are declared in `prisma/schema.prisma` and enabled automatically during the first `migrate dev` run — no manual `CREATE EXTENSION` needed.
+
+---
+
+### Step 1 — Clone & Install Dependencies
+
+```bash
+# Clone the repository
+git clone https://github.com/arywbsna/kpnhcis-backend.git
+cd kpnhcis-backend
+
+# Install all Node.js dependencies
 npm install
 ```
 
-- **Environment Configuration (.env)**
-Buat berkas bernama .env di root folder proyek (bisa menyalin dari .env.example). Sesuaikan kredensialnya dengan PostgreSQL dan Redis lokal Anda:
-```text
-DATABASE_URL="postgresql://username_postgres:password_postgres@localhost:5432/nama_database_hcis?schema=public"
-REDIS_URL="redis://localhost:6379"
-JWT_SECRET="buat_string_rahasia_super_panjang_di_sini"
+---
+
+### Step 2 — Environment Configuration
+
+Copy the provided template and fill in your local credentials:
+
+```bash
+cp .env.example .env
 ```
 
-- **Database Migration & Synchronization (Prisma)**
-Perintah ini mirip dengan php artisan migrate di Laravel. Langkah ini akan membaca berkas schema.prisma, melakukan migrasi tabel ke PostgreSQL, dan men-generate TypeScript client.
-```text
-npx prisma migrate dev --name init
+> **Security note:** Never commit a `.env` file containing real credentials. The `.gitignore` already excludes it. Always use environment injection or a secrets manager (Vault, AWS SSM) in staging and production environments.
+
+---
+
+### Step 3 — Database Setup
+
+#### 3a. Run Migrations
+
+Apply the full migration history to your PostgreSQL instance. This creates all tables, indexes (including hand-authored GIN indexes for full-text search), foreign keys, and enum types:
+
+```bash
+npx prisma migrate deploy
 ```
-(Opsional) Jika ingin menjalankan data master awal untuk tabel RBAC/User melalui seeder:
-```text
+
+> Use `migrate deploy` (not `migrate dev`) for **all non-development environments** (CI, staging, production). It applies pending migrations without generating new ones or touching the shadow database.
+>
+> For local development where you intend to iterate on the schema:
+> ```bash
+> npx prisma migrate dev
+> ```
+
+#### 3b. Generate the Prisma Client
+
+The client is generated automatically by `migrate deploy`. If you need to regenerate it manually (e.g., after a schema pull or a `node_modules` wipe):
+
+```bash
+npx prisma generate
+```
+
+#### 3c. Seed Master Data
+
+The seeder is **fully idempotent** — safe to run multiple times. It uses `upsert` throughout, so re-running it will never create duplicates or overwrite manually updated data.
+
+```bash
 npx prisma db seed
 ```
 
-- **Running the Application in Development Mode**
-Dalam mode ini, server NestJS akan menggunakan fitur Hot Reload. Setiap kali Anda mengubah atau menyimpan kode (.ts), server akan otomatis me-restart sendiri.
-```text
-npm run start:dev
-Server secara default akan berjalan di http://localhost:3000
+**What the seeder hydrates:**
+
+| Phase | Target Table | Records |
+|---|---|---|
+| 1 | `subsidiaries` | 4 KPN legal entities (`KPN_HO`, `KPN_PLNT`, `KPN_LOG`, `KPN_AGRI`) |
+| 2 | `units` *(migration)* | Pattern-based re-assignment of pre-existing units to their correct subsidiary |
+| 3 | `units` | 9 org units — 1 holding root, 3 HQ departments, 5 branch offices |
+| 4 | `permissions` | 16 CASL action:subject rules (`manage:all`, `read:User`, `create:LeaveRequest`, …) |
+| 5 | `roles` + `role_permissions` | 4 system roles: `superadmin`, `hr_manager`, `line_manager`, `employee` |
+| 6 | `users` | 3 seed users (admin, IT manager, staff engineer) |
+| 7 | `user_roles` | Role assignments for the 3 seed users |
+
+**Default seed credentials** (development only — change before any staging deployment):
+
+| Email | Role | Password |
+|---|---|---|
+| `admin@kpncorp.com` | `superadmin` | `password` |
+| `manager.it@kpncorp.com` | `line_manager` | `password` |
+| `staff.it@kpncorp.com` | `employee` | `password` |
+
+#### 3d. (Optional) Inspect the Database
+
+Prisma Studio provides a visual browser for all tables without writing any SQL:
+
+```bash
+npx prisma studio
+# Opens at http://localhost:5555
 ```
 
-- **Compiling / Building the Project**
-Karena Node.js tidak bisa mengeksekusi file TypeScript (.ts) secara langsung di production, Anda harus mengompilasi seluruh kode proyek menjadi JavaScript murni (.js). File hasil compile akan masuk ke dalam folder /dist.
-```text
+---
+
+### Step 4 — Run the Application
+
+#### Development (hot-reload enabled)
+
+```bash
+npm run start:dev
+# API available at http://localhost:3000/api/v1
+```
+
+The NestJS file watcher recompiles and restarts the server on every `.ts` save. No manual restart needed during development.
+
+#### Debug Mode
+
+```bash
+npm run start:debug
+# Attach a Node.js inspector on the default port (9229)
+```
+
+---
+
+### Step 5 — Build & Production Deployment
+
+#### Build
+
+Compile TypeScript to optimised JavaScript in `./dist`:
+
+```bash
 npm run build
 ```
 
-- **Running the Application in Production Mode**
-Setelah proses npm run build selesai dijalankan dengan sukses, gunakan perintah ini di server produksi untuk menjalankan aplikasi JavaScript yang sudah dioptimasi:
-```text
-npm run start:prod
+#### Run (standalone Node)
+
+```bash
+NODE_ENV=production npm run start:prod
 ```
 
-- **Production Process Management (PM2)**
-Pada server produksi asli (seperti Alibaba Cloud ECS), sangat disarankan mengawal proses aplikasi menggunakan Process Manager seperti PM2 agar sistem dapat melakukan auto-restart jika terjadi crash yang tidak terduga:
-```text
+#### Run with PM2 (recommended for production servers)
+
+PM2 provides process supervision, automatic restarts on crash, log management, and cluster mode for multi-core utilisation:
+
+```bash
+# Install PM2 globally (one-time)
+npm install -g pm2
+
+# Start the application
 pm2 start dist/main.js --name "kpnhcis-backend"
+
+# Save process list so it survives server reboots
+pm2 save
+pm2 startup   # Follow the printed command to enable auto-start on boot
+
+# Useful PM2 commands
+pm2 status                    # Show process health
+pm2 logs kpnhcis-backend      # Tail live logs
+pm2 reload kpnhcis-backend    # Zero-downtime reload (cluster mode)
+pm2 stop kpnhcis-backend      # Graceful stop
 ```
+
+> For zero-downtime deployments on Alibaba Cloud ECS or similar, use `pm2 reload` instead of `pm2 restart` — it cycles workers one by one, keeping the API available throughout the deployment.
+
 ---
 
 ## Architecture Overview

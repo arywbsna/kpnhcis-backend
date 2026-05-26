@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Unit } from '@prisma/client';
+import { Prisma, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
@@ -39,7 +39,10 @@ export class UnitsService {
       }
     }
 
-    return this.prisma.unit.create({ data: dto });
+    // Cast to UnitUncheckedCreateInput so Prisma resolves scalar FKs
+    // (subsidiaryId, parentId) directly instead of requiring nested relation
+    // objects. This is the correct path when all FK values are provided as UUIDs.
+    return this.prisma.unit.create({ data: dto as Prisma.UnitUncheckedCreateInput });
   }
 
   // ---------------------------------------------------------------------------

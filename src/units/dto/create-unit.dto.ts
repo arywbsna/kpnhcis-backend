@@ -22,6 +22,11 @@ export class CreateUnitDto {
   @IsOptional()
   description?: string;
 
+  /// Mandatory tenant boundary — every unit must declare its legal entity owner.
+  /// Must equal an existing Subsidiary.id. Enforced as NOT NULL at the DB level.
+  @IsUUID()
+  subsidiaryId: string;
+
   @IsUUID()
   @IsOptional()
   parentId?: string;
